@@ -29,6 +29,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from cnn import TechniqueCNN, FeatureExtractor, LABELS, MIN_DURATION
+import gen as synth_gen
 
 
 # ============================================================
@@ -104,20 +105,30 @@ def run_inference(audio_path, model_path, threshold=0.3, device=None):
                 in_span = True
             elif not v and in_span:
                 conf = float(pred[li, start:fi].mean())
+                span_scores = pred[:, start:fi].mean(axis=1)
+                top10_idx = np.argsort(span_scores)[::-1][:10]
+                top10 = [{"label": labels[j], "score": round(float(span_scores[j]), 3)}
+                         for j in top10_idx]
                 predictions.append({
                     "label": label,
                     "start": round(start * frame_dur, 4),
                     "end": round(fi * frame_dur, 4),
                     "confidence": round(conf, 3),
+                    "top10": top10,
                 })
                 in_span = False
         if in_span:
             conf = float(pred[li, start:].mean())
+            span_scores = pred[:, start:].mean(axis=1)
+            top10_idx = np.argsort(span_scores)[::-1][:10]
+            top10 = [{"label": labels[j], "score": round(float(span_scores[j]), 3)}
+                     for j in top10_idx]
             predictions.append({
                 "label": label,
                 "start": round(start * frame_dur, 4),
                 "end": round(pred.shape[1] * frame_dur, 4),
                 "confidence": round(conf, 3),
+                "top10": top10,
             })
 
     predictions = [p for p in predictions
@@ -129,6 +140,37 @@ def run_inference(audio_path, model_path, threshold=0.3, device=None):
 # ============================================================
 # Pre-computation
 # ============================================================
+
+def estimate_pitch(waveform, sr, start_sec, end_sec):
+    """Estimate dominant pitch of a segment using pyin."""
+    s = max(0, int(start_sec * sr))
+    e = min(len(waveform), int(end_sec * sr))
+    segment = waveform[s:e]
+    if len(segment) < sr * 0.05:
+        return None
+    f0, voiced, _ = librosa.pyin(segment, fmin=50, fmax=2000, sr=sr)
+    voiced_f0 = f0[voiced]
+    if len(voiced_f0) == 0:
+        return None
+    return float(np.median(voiced_f0))
+
+
+def synth_reference(label, freq, dur=1.5):
+    """Synthesize a reference clip for a technique at a given frequency."""
+    fn_name = f"gen_{label}"
+    fn = getattr(synth_gen, fn_name, None)
+    if fn is None:
+        return None
+    try:
+        sig, _ = fn(freq, dur)
+        sig = sig / max(np.max(np.abs(sig)), 1e-10) * 0.8
+        buf = io.BytesIO()
+        sf.write(buf, sig.astype(np.float32), synth_gen.SR, format="WAV")
+        buf.seek(0)
+        return f"data:audio/wav;base64,{base64.b64encode(buf.read()).decode()}"
+    except Exception:
+        return None
+
 
 def precompute(waveform, sr, predictions, ref_dir):
     """Build all data needed by the frontend, indexed by prediction index."""
@@ -148,7 +190,21 @@ def precompute(waveform, sr, predictions, ref_dir):
             ref_urls[label] = wav_to_data_url(path)
     print(f"  Loaded {len(ref_urls)} reference clips")
 
-    return segments, ref_urls
+    print("Generating pitch-matched references...")
+    matched_refs = []
+    for i, pred in enumerate(predictions):
+        freq = estimate_pitch(waveform, sr, pred["start"], pred["end"])
+        if freq:
+            url = synth_reference(pred["label"], freq)
+            matched_refs.append({"freq": round(freq, 1), "url": url})
+        else:
+            matched_refs.append(None)
+        if (i + 1) % 20 == 0:
+            print(f"  {i + 1}/{len(predictions)} matched")
+    n_matched = sum(1 for m in matched_refs if m and m["url"])
+    print(f"  Done: {n_matched}/{len(predictions)} pitch-matched")
+
+    return segments, ref_urls, matched_refs
 
 
 # ============================================================
@@ -157,12 +213,13 @@ def precompute(waveform, sr, predictions, ref_dir):
 
 class ReviewState:
     def __init__(self, audio_path, predictions, out_path, ref_dir,
-                 train_dir=None, model_path=None):
+                 train_dir=None, model_path=None, base_data_dir=None):
         self.audio_path = audio_path
         self.out_path = out_path
         self.ref_dir = ref_dir
         self.train_dir = train_dir
         self.model_path = model_path
+        self.base_data_dir = base_data_dir
         self.waveform, self.sr = load_audio(audio_path)
         self.duration = len(self.waveform) / self.sr
         self.predictions = predictions
@@ -182,6 +239,9 @@ class ReviewState:
 
     def reject(self, idx):
         self.decisions[idx] = {"action": "reject"}
+
+    def none(self, idx):
+        self.decisions[idx] = {"action": "none"}
 
     def clear_decision(self, idx):
         self.decisions.pop(idx, None)
@@ -244,16 +304,18 @@ class ReviewState:
             data_dir=self.train_dir,
             epochs=epochs,
             lr=lr,
+            base_data_dir=self.base_data_dir,
             save_path=save_path,
         )
-        return save_path, f"Fine-tuned on {n_files} files, saved to {save_path}"
+        base_msg = f" (with base data from {self.base_data_dir})" if self.base_data_dir else ""
+        return save_path, f"Fine-tuned on {n_files} files{base_msg}, saved to {save_path}"
 
 
 # ============================================================
 # App
 # ============================================================
 
-def create_app(state: ReviewState, segments, ref_urls):
+def create_app(state: ReviewState, segments, ref_urls, matched_refs):
     app = FastAPI()
 
     full_audio_url = wav_to_data_url(state.audio_path) if state.audio_path.endswith(".wav") else None
@@ -282,6 +344,20 @@ def create_app(state: ReviewState, segments, ref_urls):
             return {"url": segments[idx]}
         return JSONResponse({"error": "out of range"}, 404)
 
+    @app.get("/api/matched_ref/{idx}")
+    def api_matched_ref(idx: int):
+        if 0 <= idx < len(matched_refs) and matched_refs[idx] and matched_refs[idx]["url"]:
+            return matched_refs[idx]
+        return JSONResponse({"error": "no matched ref"}, 404)
+
+    @app.get("/api/synth_ref")
+    def api_synth_ref(label: str, freq: float):
+        """On-demand synthesis for relabel comparisons at the segment's pitch."""
+        url = synth_reference(label, freq)
+        if url:
+            return {"url": url, "freq": freq}
+        return JSONResponse({"error": "synthesis failed"}, 404)
+
     @app.get("/api/decisions")
     def api_decisions():
         return {
@@ -290,6 +366,7 @@ def create_app(state: ReviewState, segments, ref_urls):
                 "confirmed": sum(1 for d in state.decisions.values() if d["action"] == "confirm"),
                 "relabeled": sum(1 for d in state.decisions.values() if d["action"] == "relabel"),
                 "rejected": sum(1 for d in state.decisions.values() if d["action"] == "reject"),
+                "none": sum(1 for d in state.decisions.values() if d["action"] == "none"),
                 "remaining": state.total - len(state.decisions),
             },
         }
@@ -302,6 +379,11 @@ def create_app(state: ReviewState, segments, ref_urls):
     @app.post("/api/reject/{idx}")
     def api_reject(idx: int):
         state.reject(idx)
+        return {"ok": True}
+
+    @app.post("/api/none/{idx}")
+    def api_none(idx: int):
+        state.none(idx)
         return {"ok": True}
 
     @app.post("/api/clear/{idx}")
@@ -379,6 +461,7 @@ HTML = r"""<!DOCTYPE html>
   .stats .confirmed { color: var(--green); }
   .stats .relabeled { color: var(--blue); }
   .stats .rejected { color: var(--red); }
+  .stats .none-count { color: #facc15; }
 
   /* Top 10 */
   .top10 {
@@ -397,7 +480,6 @@ HTML = r"""<!DOCTYPE html>
   .top10-item.active { border-color: var(--orange); background: #2a1f14; }
   .top10-item .t10-label { color: var(--text); }
   .top10-item .t10-conf { color: var(--dim); font-size: 11px; }
-  .top10-item .t10-time { color: var(--dim); font-size: 10px; font-family: monospace; }
 
   /* Waveform */
   .waveform-card {
@@ -422,6 +504,19 @@ HTML = r"""<!DOCTYPE html>
   .pred-status.confirmed { color: var(--green); }
   .pred-status.relabeled { color: var(--blue); }
   .pred-status.rejected { color: var(--red); }
+  .pred-status.none { color: #facc15; }
+  .overlaps { margin-top: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .overlaps-label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+  .overlap-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    cursor: pointer; transition: all 0.12s;
+  }
+  .overlap-chip:hover { border-color: var(--border-hi); }
+  .ov-confirmed { border-color: var(--green); color: var(--green); }
+  .ov-relabeled { border-color: var(--blue); color: var(--blue); }
+  .ov-rejected { border-color: var(--red); color: var(--red); opacity: 0.5; }
+  .ov-none { border-color: #facc15; color: #facc15; opacity: 0.5; }
 
   /* Audio players */
   .audio-section {
@@ -467,6 +562,7 @@ HTML = r"""<!DOCTYPE html>
   .btn:hover { filter: brightness(1.15); }
   .btn-confirm { background: #065f46; color: var(--green); }
   .btn-reject { background: #7f1d1d; color: var(--red); }
+  .btn-none { background: #3b3b1f; color: #facc15; }
   .btn-undo { background: var(--card); color: var(--dim); border: 1px solid var(--border); }
   .btn-undo:hover { color: var(--text); border-color: var(--border-hi); }
 
@@ -505,6 +601,7 @@ HTML = r"""<!DOCTYPE html>
   .dot-confirmed { background: var(--green); }
   .dot-relabeled { background: var(--blue); }
   .dot-rejected { background: var(--red); }
+  .dot-none { background: #facc15; }
 
   /* Save / retrain section */
   .finish-section {
@@ -600,6 +697,7 @@ function updateRegions() {
       if (dec.action === 'confirm') color = 'rgba(52,211,153,0.2)';
       else if (dec.action === 'relabel') color = 'rgba(96,165,250,0.2)';
       else if (dec.action === 'reject') color = 'rgba(248,113,113,0.15)';
+      else if (dec.action === 'none') color = 'rgba(250,204,21,0.15)';
     }
     wsRegions.addRegion({
       start: p.start, end: p.end, color,
@@ -608,20 +706,54 @@ function updateRegions() {
   });
 }
 
-// ---- Top 10 ----
+// ---- Overlapping predictions ----
+
+function overlapsHtml() {
+  const pred = D.predictions[idx];
+  const overlaps = [];
+  D.predictions.forEach((p, i) => {
+    if (i === idx) return;
+    if (p.start < pred.end && p.end > pred.start) {
+      overlaps.push({...p, idx: i});
+    }
+  });
+  if (!overlaps.length) return '';
+  return `<div class="overlaps">
+    <span class="overlaps-label">Overlapping:</span>
+    ${overlaps.map(o => {
+      const dec = decisions[String(o.idx)];
+      let cls = 'overlap-chip';
+      if (dec) {
+        if (dec.action === 'confirm') cls += ' ov-confirmed';
+        else if (dec.action === 'relabel') cls += ' ov-relabeled';
+        else if (dec.action === 'reject') cls += ' ov-rejected';
+        else if (dec.action === 'none') cls += ' ov-none';
+      }
+      return `<span class="${cls}" onclick="jump(${o.idx})">${o.label.replace(/_/g, ' ')} ${(o.confidence * 100).toFixed(0)}%</span>`;
+    }).join('')}
+  </div>`;
+}
+
+// ---- Top 10 label scores ----
 
 function top10Html() {
-  const ranked = D.predictions
-    .map((p, i) => ({...p, idx: i}))
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, 10);
-  return ranked.map(p =>
-    `<div class="top10-item ${p.idx === idx ? 'active' : ''}" onclick="jump(${p.idx})">
-      <span class="t10-label">${p.label.replace(/_/g, ' ')}</span>
-      <span class="t10-conf">${(p.confidence * 100).toFixed(0)}%</span>
-      <span class="t10-time">${p.start.toFixed(1)}s</span>
-    </div>`
-  ).join('');
+  const pred = D.predictions[idx];
+  const scores = pred.top10 || [];
+  if (!scores.length) return '<span style="color:var(--dim);font-size:12px;">No score data</span>';
+  return scores.map(s => {
+    const pct = (s.score * 100).toFixed(0);
+    const isMain = s.label === pred.label;
+    const cls = isMain ? 'top10-item active' : 'top10-item';
+    return `<div class="${cls}" onclick="selectRelabel('${s.label}')">
+      <span class="t10-label">${s.label.replace(/_/g, ' ')}</span>
+      <span class="t10-conf">${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+function selectRelabel(label) {
+  const sel = document.getElementById('relabel-select');
+  if (sel) { sel.value = label; onRelabelSelect(); }
 }
 
 // ---- Rendering ----
@@ -642,13 +774,26 @@ function render() {
       <span class="confirmed">&#10003; ${stats.confirmed} confirmed</span>
       <span class="relabeled">&#9998; ${stats.relabeled} relabeled</span>
       <span class="rejected">&#10007; ${stats.rejected} rejected</span>
+      <span class="none-count">&#8709; ${stats.none} none</span>
       <span>${stats.remaining} remaining</span>
     </div>
 
     <div class="top10">
-      <div class="label">Top 10 by confidence</div>
+      <div class="label">Label scores for this segment</div>
       <div class="top10-list">
         ${top10Html()}
+      </div>
+    </div>
+
+    <div class="relabel-section">
+      <label>Listen to / relabel as a different technique</label>
+      <div class="relabel-row">
+        <select class="relabel-select" id="relabel-select" onchange="onRelabelSelect()">
+          ${D.labels.map(l =>
+            `<option value="${l}" ${l === pred.label ? 'selected' : ''}>${l.replace(/_/g, ' ')}</option>`
+          ).join('')}
+        </select>
+        <button class="listen-btn" onclick="listenRef()">Listen</button>
       </div>
     </div>
 
@@ -674,6 +819,7 @@ function render() {
         &nbsp;(${(pred.end - pred.start).toFixed(2)}s)
       </div>
       ${dec ? `<div class="pred-status ${dec.action}">${statusText(dec)}</div>` : ''}
+      ${overlapsHtml()}
     </div>
 
     <div class="audio-section">
@@ -682,20 +828,13 @@ function render() {
         <audio id="seg-audio" controls preload="auto" style="height:32px; flex:1;"></audio>
       </div>
       <div class="audio-row">
-        <span class="audio-label">Reference</span>
-        <audio id="ref-audio" controls preload="auto" style="height:32px; flex:1;"></audio>
+        <span class="audio-label">Matched</span>
+        <audio id="matched-audio" controls preload="auto" style="height:32px; flex:1;"></audio>
+        <span id="matched-freq" style="color:var(--dim); font-size:11px; min-width:60px;"></span>
       </div>
-    </div>
-
-    <div class="relabel-section">
-      <label>Listen to / relabel as a different technique</label>
-      <div class="relabel-row">
-        <select class="relabel-select" id="relabel-select" onchange="onRelabelSelect()">
-          ${D.labels.map(l =>
-            `<option value="${l}" ${l === pred.label ? 'selected' : ''}>${l.replace(/_/g, ' ')}</option>`
-          ).join('')}
-        </select>
-        <button class="listen-btn" onclick="listenRef()">Listen</button>
+      <div class="audio-row">
+        <span class="audio-label">Generic</span>
+        <audio id="ref-audio" controls preload="auto" style="height:32px; flex:1;"></audio>
       </div>
     </div>
 
@@ -703,6 +842,7 @@ function render() {
       <button class="btn btn-confirm" onclick="doConfirm()">&#10003; Confirm</button>
       <button class="btn btn-confirm" onclick="doRelabel()" style="background:#1e3a5f;">&#9998; Relabel</button>
       <button class="btn btn-reject" onclick="doReject()">&#10007; Reject</button>
+      <button class="btn btn-none" onclick="doNone()">&#8709; None</button>
       ${dec ? '<button class="btn btn-undo" onclick="doUndo()">Undo</button>' : ''}
     </div>
 
@@ -718,6 +858,7 @@ function render() {
             if (d.action === 'confirm') dotClass = 'dot-confirmed';
             else if (d.action === 'relabel') dotClass = 'dot-relabeled';
             else if (d.action === 'reject') dotClass = 'dot-rejected';
+            else if (d.action === 'none') dotClass = 'dot-none';
           }
           return `<div class="pred-list-item ${i === idx ? 'active' : ''}" onclick="jump(${i})">
             <span class="dot ${dotClass}"></span>
@@ -738,7 +879,10 @@ function render() {
   loadWaveform();
   loadSegmentAudio();
   loadRefAudio(pred.label);
+  loadMatchedRef();
 }
+
+let currentPitch = null;  // detected pitch of current segment
 
 async function loadSegmentAudio() {
   const audio = document.getElementById('seg-audio');
@@ -758,21 +902,59 @@ function loadRefAudio(label) {
   }
 }
 
+async function loadMatchedRef() {
+  const audio = document.getElementById('matched-audio');
+  const freqSpan = document.getElementById('matched-freq');
+  if (!audio) return;
+  try {
+    const r = await fetch(`/api/matched_ref/${idx}`);
+    if (r.ok) {
+      const data = await r.json();
+      audio.src = data.url;
+      currentPitch = data.freq;
+      if (freqSpan) freqSpan.textContent = `${data.freq} Hz`;
+    } else {
+      audio.removeAttribute('src');
+      currentPitch = null;
+      if (freqSpan) freqSpan.textContent = 'no pitch';
+    }
+  } catch {
+    audio.removeAttribute('src');
+    currentPitch = null;
+    if (freqSpan) freqSpan.textContent = '';
+  }
+}
+
+async function loadMatchedRefForLabel(label) {
+  if (!currentPitch) return;
+  const audio = document.getElementById('matched-audio');
+  if (!audio) return;
+  try {
+    const r = await fetch(`/api/synth_ref?label=${encodeURIComponent(label)}&freq=${currentPitch}`);
+    if (r.ok) {
+      const data = await r.json();
+      audio.src = data.url;
+    }
+  } catch {}
+}
+
 function statusText(dec) {
   if (dec.action === 'confirm') return '&#10003; Confirmed';
   if (dec.action === 'relabel') return `&#9998; Relabeled → ${dec.label.replace(/_/g, ' ')}`;
   if (dec.action === 'reject') return '&#10007; Rejected';
+  if (dec.action === 'none') return '&#8709; None of the above';
   return '';
 }
 
 function computeStats() {
-  let confirmed = 0, relabeled = 0, rejected = 0;
+  let confirmed = 0, relabeled = 0, rejected = 0, none = 0;
   for (const d of Object.values(decisions)) {
     if (d.action === 'confirm') confirmed++;
     else if (d.action === 'relabel') relabeled++;
     else if (d.action === 'reject') rejected++;
+    else if (d.action === 'none') none++;
   }
-  return { confirmed, relabeled, rejected, remaining: D.total - confirmed - relabeled - rejected };
+  return { confirmed, relabeled, rejected, none, remaining: D.total - confirmed - relabeled - rejected - none };
 }
 
 // ---- Actions ----
@@ -813,6 +995,12 @@ async function doReject() {
   render();
 }
 
+async function doNone() {
+  await fetch(`/api/none/${idx}`, { method: 'POST' });
+  await refreshDecisions();
+  render();
+}
+
 async function doUndo() {
   await fetch(`/api/clear/${idx}`, { method: 'POST' });
   await refreshDecisions();
@@ -821,10 +1009,20 @@ async function doUndo() {
 
 function onRelabelSelect() {
   const sel = document.getElementById('relabel-select');
-  if (sel) loadRefAudio(sel.value);
+  if (sel) {
+    loadRefAudio(sel.value);
+    loadMatchedRefForLabel(sel.value);
+  }
 }
 
 function listenRef() {
+  // Play matched if available, otherwise generic
+  const matched = document.getElementById('matched-audio');
+  if (matched && matched.src) {
+    matched.currentTime = 0;
+    matched.play();
+    return;
+  }
   const audio = document.getElementById('ref-audio');
   if (audio && audio.src) {
     audio.currentTime = 0;
@@ -855,7 +1053,8 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'x' || e.key === 'n') doReject();
   else if (e.key === 'u') doUndo();
   else if (e.key === 's') { const a = document.getElementById('seg-audio'); if (a) { a.currentTime = 0; a.play(); } }
-  else if (e.key === 'r') { const a = document.getElementById('ref-audio'); if (a) { a.currentTime = 0; a.play(); } }
+  else if (e.key === 'r') { listenRef(); }
+  else if (e.key === 'g') { const a = document.getElementById('ref-audio'); if (a) { a.currentTime = 0; a.play(); } }
   else if (e.key === 'Tab') { e.preventDefault(); goNextUndecided(); }
 });
 
@@ -881,6 +1080,8 @@ def main():
     parser.add_argument("--train_dir", default=None,
                         help="Directory to accumulate corrected data")
     parser.add_argument("--threshold", type=float, default=0.3)
+    parser.add_argument("--base_data", default=None,
+                        help="Base synthetic training data dir (mixed in during fine-tune to prevent forgetting)")
     parser.add_argument("--out", default=None,
                         help="Output JSON path (default: <stem>_labels.json)")
     parser.add_argument("--port", type=int, default=8080)
@@ -912,11 +1113,12 @@ def main():
         ref_dir=args.ref_dir,
         train_dir=args.train_dir,
         model_path=args.model,
+        base_data_dir=args.base_data,
     )
 
-    segments, ref_urls = precompute(state.waveform, state.sr, state.predictions, args.ref_dir)
+    segments, ref_urls, matched_refs = precompute(state.waveform, state.sr, state.predictions, args.ref_dir)
 
-    app = create_app(state, segments, ref_urls)
+    app = create_app(state, segments, ref_urls, matched_refs)
     print(f"\nOpen http://localhost:{args.port}")
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="warning")
 

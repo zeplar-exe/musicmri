@@ -43,13 +43,21 @@ LABELS = [
     "fortepiano", "subito_forte", "subito_piano", "morendo",
     # Articulation
     "staccato", "legato", "marcato", "tenuto", "portato", "accent",
+    "spiccato", "dead_note",
     # Ornaments
     "vibrato", "tremolo", "trill", "glissando", "mordent",
     "grace_note", "pitch_bend", "turn", "portamento",
+    "scoop", "fall_off",
     # Tempo modification
     "accelerando", "ritardando", "rubato", "fermata", "caesura",
     # Timbre modification
-    "muted", "harmonics", "wah", "distortion", "palm_mute",
+    "muted", "harmonics", "distortion", "palm_mute",
+    # Percussion / extended
+    "roll", "flam", "ghost_note", "choke",
+    # String / plucked
+    "pizzicato", "hammer_on", "slide",
+    # Wind
+    "flutter", "arpeggio",
 ]
 
 LABEL_TO_IDX = {label: i for i, label in enumerate(LABELS)}
@@ -256,7 +264,7 @@ class TechniqueCNN(nn.Module):
 
 def train(data_dir, epochs=50, batch_size=16, lr=1e-3, device=None):
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Device: {device}")
 
     fe = FeatureExtractor()
@@ -311,22 +319,26 @@ def train(data_dir, epochs=50, batch_size=16, lr=1e-3, device=None):
 
 
 def finetune(model_path, data_dir, epochs=20, batch_size=8, lr=1e-4,
-             save_path=None, device=None):
-    """Load existing model and fine-tune on new data.
+             base_data_dir=None, base_weight=0.5, save_path=None, device=None):
+    """Load existing model and fine-tune on corrected data, optionally mixed
+    with original training data to prevent catastrophic forgetting.
 
     Args:
-        model_path: path to existing model.pt
-        data_dir:   directory with audio/ and labels/ subdirs (corrected data)
-        epochs:     fine-tuning epochs (fewer than from-scratch)
-        batch_size: smaller batch for small datasets
-        lr:         lower learning rate to avoid catastrophic forgetting
-        save_path:  where to save the updated model (default: overwrite model_path)
+        model_path:     path to existing model.pt
+        data_dir:       directory with corrected audio/ and labels/
+        epochs:         fine-tuning epochs
+        batch_size:     batch size
+        lr:             learning rate
+        base_data_dir:  original synthetic training data dir; if provided,
+                        a random subset is mixed in each epoch
+        base_weight:    fraction of each batch that comes from base data (0-1).
+                        e.g. 0.5 means half corrected, half synthetic.
+        save_path:      where to save (default: overwrite model_path)
     """
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Fine-tuning on {device}")
 
-    # Load existing model
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     fe_params = checkpoint["fe_params"]
 
@@ -335,16 +347,31 @@ def finetune(model_path, data_dir, epochs=20, batch_size=8, lr=1e-4,
     model.load_state_dict(checkpoint["model_state"])
     model = model.to(device)
 
-    # Load new data
-    dataset = TechniqueDataset(data_dir, fe)
-    loader = DataLoader(
-        dataset, batch_size=batch_size, shuffle=True,
-        collate_fn=collate_fn, num_workers=0,
-    )
-    print(f"Fine-tuning on {len(dataset)} corrected samples")
+    # Load corrected data
+    corrected_ds = TechniqueDataset(data_dir, fe)
+    print(f"Corrected samples: {len(corrected_ds)}")
 
-    # Lower LR, only train classifier head initially if dataset is very small
-    if len(dataset) < 20:
+    # Load base data if provided
+    if base_data_dir and os.path.isdir(os.path.join(base_data_dir, "audio")):
+        base_ds = TechniqueDataset(base_data_dir, fe)
+        print(f"Base (synthetic) samples: {len(base_ds)}")
+
+        # Mix: oversample corrected data to match desired ratio
+        # Each epoch sees all corrected samples + a proportional chunk of base
+        n_base_per_epoch = int(len(corrected_ds) * base_weight / max(1 - base_weight, 0.1))
+        n_base_per_epoch = min(n_base_per_epoch, len(base_ds))
+
+        from torch.utils.data import ConcatDataset, Subset
+        mixed_datasets = True
+        print(f"Mixing {len(corrected_ds)} corrected + {n_base_per_epoch} base per epoch "
+              f"({base_weight:.0%} base)")
+    else:
+        mixed_datasets = False
+        if base_data_dir:
+            print(f"Warning: base_data_dir '{base_data_dir}' not found, fine-tuning on corrections only")
+
+    # Freeze conv blocks for very small corrected sets
+    if len(corrected_ds) < 20:
         print("Small dataset: freezing conv blocks, training classifier only")
         for param in model.conv_blocks.parameters():
             param.requires_grad = False
@@ -357,6 +384,20 @@ def finetune(model_path, data_dir, epochs=20, batch_size=8, lr=1e-4,
 
     for epoch in range(1, epochs + 1):
         model.train()
+
+        if mixed_datasets:
+            # Random subset of base data each epoch for variety
+            base_indices = torch.randperm(len(base_ds))[:n_base_per_epoch].tolist()
+            base_subset = Subset(base_ds, base_indices)
+            epoch_ds = ConcatDataset([corrected_ds, base_subset])
+        else:
+            epoch_ds = corrected_ds
+
+        loader = DataLoader(
+            epoch_ds, batch_size=batch_size, shuffle=True,
+            collate_fn=collate_fn, num_workers=0,
+        )
+
         total_loss = 0
         n_batches = 0
 
@@ -413,6 +454,8 @@ MIN_DURATION = {
     "tenuto": 0.2,
     "portato": 0.2,
     "accent": 0.08,
+    "spiccato": 0.15,
+    "dead_note": 0.03,
     # Ornaments
     "vibrato": 0.2,
     "tremolo": 0.15,
@@ -423,6 +466,8 @@ MIN_DURATION = {
     "pitch_bend": 0.1,
     "turn": 0.08,
     "portamento": 0.1,
+    "scoop": 0.05,
+    "fall_off": 0.05,
     # Tempo modification
     "accelerando": 0.5,
     "ritardando": 0.5,
@@ -432,9 +477,20 @@ MIN_DURATION = {
     # Timbre modification
     "muted": 0.15,
     "harmonics": 0.1,
-    "wah": 0.2,
     "distortion": 0.15,
     "palm_mute": 0.1,
+    # Percussion / extended
+    "roll": 0.2,
+    "flam": 0.03,
+    "ghost_note": 0.03,
+    "choke": 0.05,
+    # String / plucked
+    "pizzicato": 0.03,
+    "hammer_on": 0.03,
+    "slide": 0.08,
+    # Wind
+    "flutter": 0.15,
+    "arpeggio": 0.15,
 }
 
 
@@ -445,7 +501,7 @@ def predict(audio_path, model_path, threshold=0.5, device=None):
         List of {"label": str, "start": float, "end": float, "confidence": float}
     """
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 
     checkpoint = torch.load(model_path, map_location=device, weights_only=False)
     fe_params = checkpoint["fe_params"]
@@ -474,11 +530,16 @@ def predict(audio_path, model_path, threshold=0.5, device=None):
         spans = _contiguous_spans(active)
         for start_frame, end_frame in spans:
             confidence = float(pred[li, start_frame:end_frame].mean())
+            span_scores = pred[:, start_frame:end_frame].mean(axis=1)
+            top10_idx = np.argsort(span_scores)[::-1][:10]
+            top10 = [{"label": labels[j], "score": round(float(span_scores[j]), 3)}
+                     for j in top10_idx]
             results.append({
                 "label": label,
                 "start": round(start_frame * frame_duration, 3),
                 "end": round(end_frame * frame_duration, 3),
                 "confidence": round(confidence, 3),
+                "top10": top10,
             })
 
     results = [r for r in results
@@ -527,6 +588,10 @@ if __name__ == "__main__":
     p_ft = sub.add_parser("finetune")
     p_ft.add_argument("--model", required=True, help="Existing model.pt to fine-tune")
     p_ft.add_argument("--data_dir", required=True, help="Corrected data (audio/ + labels/)")
+    p_ft.add_argument("--base_data", default=None,
+                      help="Original training data dir to mix in (prevents forgetting)")
+    p_ft.add_argument("--base_weight", type=float, default=0.5,
+                      help="Fraction of base data in each batch (0-1, default: 0.5)")
     p_ft.add_argument("--epochs", type=int, default=20)
     p_ft.add_argument("--batch_size", type=int, default=8)
     p_ft.add_argument("--lr", type=float, default=1e-4)
@@ -542,6 +607,8 @@ if __name__ == "__main__":
         print(json.dumps(results, indent=2))
     elif args.command == "finetune":
         finetune(args.model, args.data_dir, epochs=args.epochs,
-                 batch_size=args.batch_size, lr=args.lr, save_path=args.save)
+                 batch_size=args.batch_size, lr=args.lr,
+                 base_data_dir=args.base_data, base_weight=args.base_weight,
+                 save_path=args.save)
     else:
         parser.print_help()
