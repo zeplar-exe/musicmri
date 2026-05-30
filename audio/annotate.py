@@ -1080,6 +1080,8 @@ def main():
     parser.add_argument("--train_dir", default=None,
                         help="Directory to accumulate corrected data")
     parser.add_argument("--threshold", type=float, default=0.3)
+    parser.add_argument("--stems", action="store_true",
+                        help="Separate into stems (Demucs 6s) before predicting")
     parser.add_argument("--base_data", default=None,
                         help="Base synthetic training data dir (mixed in during fine-tune to prevent forgetting)")
     parser.add_argument("--out", default=None,
@@ -1092,8 +1094,13 @@ def main():
             predictions = json.load(f)
         predictions.sort(key=lambda p: (p["start"], p["end"]))
     elif args.model:
-        print("Running inference...")
-        predictions = run_inference(args.audio, args.model, threshold=args.threshold)
+        if args.stems:
+            print("Running stem-separated inference (Demucs 6s)...")
+            from cnn import predict_stems
+            predictions = predict_stems(args.audio, args.model, threshold=args.threshold)
+        else:
+            print("Running inference...")
+            predictions = run_inference(args.audio, args.model, threshold=args.threshold)
     else:
         parser.error("Provide --model or --predictions")
 

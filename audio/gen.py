@@ -15,12 +15,68 @@ Usage:
 import argparse
 import json
 import os
+import glob
 import numpy as np
+import librosa
 from scipy.io.wavfile import write
 from scipy.signal import butter, sosfilt
 
 SR = 44100
 RNG = np.random.default_rng(42)
+
+# Mel spectrogram params — must match cnn.py FeatureExtractor defaults
+MEL_SR = 22050
+MEL_N_FFT = 2048
+MEL_HOP = 512
+MEL_N_MELS = 128
+
+# Background music pool (loaded lazily)
+_bg_pool = []  # list of (samples,) float64 arrays at SR
+
+
+def load_backgrounds(bg_dir):
+    """Load all audio files from a directory into the background pool."""
+    global _bg_pool
+    _bg_pool = []
+    if not bg_dir or not os.path.isdir(bg_dir):
+        return
+    import librosa
+    patterns = ["*.mp3", "*.wav", "*.flac", "*.ogg", "*.m4a"]
+    files = []
+    for pat in patterns:
+        files.extend(glob.glob(os.path.join(bg_dir, pat)))
+    files.sort()
+    for path in files:
+        try:
+            y, _ = librosa.load(path, sr=SR, mono=True)
+            if len(y) > SR * 2:  # at least 2 seconds
+                _bg_pool.append(y)
+        except Exception as e:
+            print(f"  Skipping {os.path.basename(path)}: {e}")
+    print(f"  Loaded {len(_bg_pool)} background tracks")
+
+
+def mix_background(sig, snr_db):
+    """Mix a random chunk from the background pool under the signal."""
+    if not _bg_pool:
+        return sig
+    bg = _bg_pool[RNG.integers(len(_bg_pool))]
+    # Pick a random offset that fits our signal length
+    max_start = len(bg) - len(sig)
+    if max_start <= 0:
+        # Background shorter than signal — loop it
+        reps = (len(sig) // len(bg)) + 1
+        bg = np.tile(bg, reps)
+        max_start = len(bg) - len(sig)
+    start = RNG.integers(0, max(max_start, 1))
+    chunk = bg[start:start + len(sig)]
+    if len(chunk) < len(sig):
+        chunk = np.pad(chunk, (0, len(sig) - len(chunk)))
+    # Mix at specified SNR
+    sig_power = np.mean(sig ** 2) + 1e-10
+    bg_power = np.mean(chunk ** 2) + 1e-10
+    scale = np.sqrt(sig_power / (bg_power * 10 ** (snr_db / 10)))
+    return sig + chunk * scale
 
 
 # ============================================================
@@ -100,15 +156,6 @@ def gen_decrescendo(freq, dur):
     return sig, [{"label": "decrescendo", "start": 0.0, "end": dur}]
 
 
-def gen_sforzando(freq, dur):
-    tt = t(dur)
-    env = np.ones(len(tt)) * 0.15
-    attack_len = int(len(tt) * RNG.uniform(0.05, 0.15))
-    env[:attack_len] = np.exp(-5 * np.linspace(0, 1, attack_len))
-    sig = env * pick_waveform(freq, dur)
-    return sig, [{"label": "sforzando", "start": 0.0, "end": attack_len / SR}]
-
-
 def gen_swell(freq, dur):
     tt = t(dur)
     mid = len(tt) // 2
@@ -120,26 +167,6 @@ def gen_swell(freq, dur):
     return sig, [{"label": "swell", "start": 0.0, "end": dur}]
 
 
-def gen_fortepiano(freq, dur):
-    tt = t(dur)
-    env = np.ones(len(tt)) * 0.15
-    attack_end = int(len(tt) * 0.05)
-    env[:attack_end] = 1.0
-    drop = int(len(tt) * 0.08)
-    env[attack_end:attack_end + drop] = np.linspace(1.0, 0.15, drop)
-    sig = env * pick_waveform(freq, dur)
-    return sig, [{"label": "fortepiano", "start": 0.0, "end": dur}]
-
-
-def gen_subito_forte(freq, dur):
-    tt = t(dur)
-    env = np.ones(len(tt)) * 0.15
-    mid = len(tt) // 2
-    env[mid:] = 1.0
-    sig = env * pick_waveform(freq, dur)
-    return sig, [{"label": "subito_forte", "start": mid / SR, "end": dur}]
-
-
 def gen_subito_piano(freq, dur):
     tt = t(dur)
     env = np.ones(len(tt))
@@ -149,32 +176,18 @@ def gen_subito_piano(freq, dur):
     return sig, [{"label": "subito_piano", "start": mid / SR, "end": dur}]
 
 
-def gen_morendo(freq, dur):
-    tt = t(dur)
-    env = np.exp(-RNG.uniform(2, 5) * tt / dur)
-    sig = env * pick_waveform(freq, dur)
-    return sig, [{"label": "morendo", "start": 0.0, "end": dur}]
-
-
 # --- Ornaments ---
 
 def gen_vibrato(freq, dur):
     tt = t(dur)
     vib_rate = RNG.uniform(4, 7)
-    vib_depth = RNG.uniform(3, 15)
-    inst_freq = freq + vib_depth * np.sin(2 * np.pi * vib_rate * tt)
+    # Depth as a fraction of pitch (~constant cents) so vibrato looks the same
+    # whether the note is 60 Hz or 1200 Hz, instead of absolute Hz.
+    vib_depth = RNG.uniform(0.012, 0.04)  # ~20-70 cents
+    inst_freq = freq * (1 + vib_depth * np.sin(2 * np.pi * vib_rate * tt))
     phase = 2 * np.pi * np.cumsum(inst_freq) / SR
     sig = np.sin(phase)
     return sig, [{"label": "vibrato", "start": 0.0, "end": dur}]
-
-
-def gen_tremolo(freq, dur):
-    tt = t(dur)
-    trem_rate = RNG.uniform(5, 10)
-    trem_depth = RNG.uniform(0.5, 0.9)
-    env = 1.0 - trem_depth * 0.5 * (1 + np.sin(2 * np.pi * trem_rate * tt))
-    sig = env * pick_waveform(freq, dur)
-    return sig, [{"label": "tremolo", "start": 0.0, "end": dur}]
 
 
 def gen_trill(freq, dur):
@@ -200,19 +213,6 @@ def gen_glissando(freq, dur):
     return sig, [{"label": "glissando", "start": 0.0, "end": dur}]
 
 
-def gen_mordent(freq, dur):
-    tt = t(dur)
-    lower = freq / (2 ** (RNG.choice([1, 2]) / 12))
-    mordent_dur = RNG.uniform(0.06, 0.12)
-    mordent_samples = int(SR * mordent_dur)
-    seg = mordent_samples // 3
-    inst_freq = np.ones(len(tt)) * freq
-    inst_freq[seg:2 * seg] = lower
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    sig = np.sin(phase)
-    return sig, [{"label": "mordent", "start": 0.0, "end": mordent_dur}]
-
-
 def gen_grace_note(freq, dur):
     tt = t(dur)
     grace_freq = freq / (2 ** (RNG.choice([1, 2]) / 12))
@@ -230,47 +230,29 @@ def gen_pitch_bend(freq, dur):
     bend_semi = RNG.uniform(1, 3)
     bend_freq = freq * (2 ** (bend_semi / 12))
     n = len(tt)
-    r_up = int(n * 0.3)
-    hold = int(n * 0.4)
-    r_dn = n - r_up - hold
-    freq_env = np.concatenate([
-        np.linspace(freq, bend_freq, r_up),
-        np.ones(hold) * bend_freq,
-        np.linspace(bend_freq, freq, r_dn)
-    ])
+
+    if RNG.random() < 0.5:
+        # Bend up and release: a continuous triangular arc, no steady tone,
+        # so labeling the whole span is honest.
+        r_up = int(n * RNG.uniform(0.45, 0.55))
+        freq_env = np.concatenate([
+            np.linspace(freq, bend_freq, r_up),
+            np.linspace(bend_freq, freq, n - r_up),
+        ])
+        label_end = dur
+    else:
+        # Bend up and sustain: only the ramp is pitch motion; the held bent
+        # note that follows is a steady tone and stays unlabeled.
+        r_up = int(n * RNG.uniform(0.25, 0.45))
+        freq_env = np.concatenate([
+            np.linspace(freq, bend_freq, r_up),
+            np.ones(n - r_up) * bend_freq,
+        ])
+        label_end = r_up / SR
+
     phase = 2 * np.pi * np.cumsum(freq_env) / SR
     sig = np.sin(phase)
-    return sig, [{"label": "pitch_bend", "start": 0.0, "end": dur}]
-
-
-def gen_turn(freq, dur):
-    tt = t(dur)
-    above = freq * (2 ** (2 / 12))
-    below = freq / (2 ** (2 / 12))
-    orn_dur = RNG.uniform(0.15, 0.25)
-    orn = int(SR * orn_dur)
-    seg = orn // 4
-    inst_freq = np.ones(len(tt)) * freq
-    inst_freq[0:seg] = above
-    inst_freq[seg:2 * seg] = freq
-    inst_freq[2 * seg:3 * seg] = below
-    inst_freq[3 * seg:4 * seg] = freq
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    sig = np.sin(phase)
-    return sig, [{"label": "turn", "start": 0.0, "end": orn_dur}]
-
-
-def gen_portamento(freq, dur):
-    tt = t(dur)
-    target = freq * (2 ** (RNG.uniform(3, 7) / 12))
-    slide_dur = RNG.uniform(0.15, 0.35)
-    slide_samples = int(SR * slide_dur)
-    freqs = np.ones(len(tt)) * target
-    slide = freq * (target / freq) ** np.linspace(0, 1, slide_samples)
-    freqs[:slide_samples] = slide
-    phase = 2 * np.pi * np.cumsum(freqs) / SR
-    sig = np.sin(phase)
-    return sig, [{"label": "portamento", "start": 0.0, "end": slide_dur}]
+    return sig, [{"label": "pitch_bend", "start": 0.0, "end": round(label_end, 4)}]
 
 
 # --- Articulation (phrase-based) ---
@@ -302,21 +284,6 @@ def gen_staccato(freq, dur):
 def gen_legato(freq, dur):
     notes = RNG.integers(6, 12)
     return _gen_phrase(freq, dur, notes, duty=0.95, label="legato")
-
-
-def gen_marcato(freq, dur):
-    notes = RNG.integers(6, 10)
-    return _gen_phrase(freq, dur, notes, duty=0.6, label="marcato")
-
-
-def gen_tenuto(freq, dur):
-    notes = RNG.integers(6, 10)
-    return _gen_phrase(freq, dur, notes, duty=0.95, label="tenuto")
-
-
-def gen_portato(freq, dur):
-    notes = RNG.integers(6, 10)
-    return _gen_phrase(freq, dur, notes, duty=0.6, label="portato")
 
 
 def gen_accent(freq, dur):
@@ -375,14 +342,6 @@ def gen_ritardando(freq, dur):
     return _gen_tempo_phrase(freq, dur, notes, iois, "ritardando")
 
 
-def gen_rubato(freq, dur):
-    notes = RNG.integers(8, 12)
-    base = dur / notes
-    iois = base + RNG.normal(0, base * 0.25, notes)
-    iois = np.clip(iois, base * 0.4, base * 1.6)
-    return _gen_tempo_phrase(freq, dur, notes, iois, "rubato")
-
-
 def gen_fermata(freq, dur):
     notes = 6
     iois = np.ones(notes)
@@ -434,92 +393,6 @@ def gen_caesura(freq, dur):
     return out, [{"label": "caesura", "start": round(pause_start, 3),
                   "end": round(pause_start + slot, 3)}]
 
-
-# --- Timbre modification ---
-
-def gen_muted(freq, dur):
-    sig = sawtooth(freq, dur)
-    sig = lowpass(sig, cutoff=freq * RNG.uniform(1.5, 2.5))
-    return sig, [{"label": "muted", "start": 0.0, "end": dur}]
-
-
-def gen_harmonics(freq, dur):
-    """Play isolated harmonics in sequence."""
-    quarter = dur / 4
-    parts = []
-    for k in [1, 2, 3, 4]:
-        seg = sine(freq * k, quarter)
-        fade = int(SR * 0.02)
-        if fade > 0 and fade < len(seg):
-            seg[:fade] *= np.linspace(0, 1, fade)
-            seg[-fade:] *= np.linspace(1, 0, fade)
-        parts.append(seg)
-    return np.concatenate(parts), [{"label": "harmonics", "start": 0.0, "end": dur}]
-
-
-def gen_distortion(freq, dur):
-    """Soft-clipped distortion with harmonic richness and post-EQ."""
-    # Start with a harmonically rich signal
-    sig = sawtooth(freq, dur)
-    # Soft clip via tanh saturation
-    gain = RNG.uniform(3, 8)
-    sig = np.tanh(sig * gain)
-    # Asymmetric clipping: positive side clips harder
-    asym = RNG.uniform(0.0, 0.3)
-    sig = np.where(sig > 0, sig * (1 - asym), sig)
-    # Roll off harsh highs (cabinet sim)
-    cutoff = freq * RNG.uniform(4, 8)
-    cutoff = min(cutoff, SR / 2 - 1)
-    sig = lowpass(sig, cutoff)
-    return sig, [{"label": "distortion", "start": 0.0, "end": dur}]
-
-
-def gen_palm_mute(freq, dur):
-    sig = sawtooth(freq, dur)
-    tt = t(dur)
-    env = np.exp(-RNG.uniform(4, 8) * tt / dur)
-    sig *= env
-    sig = lowpass(sig, cutoff=freq * RNG.uniform(2, 4))
-    return sig, [{"label": "palm_mute", "start": 0.0, "end": dur}]
-
-
-# --- Articulation (new) ---
-
-def gen_spiccato(freq, dur):
-    """Bounced bow: short notes with sharp attack and fast decay."""
-    notes = RNG.integers(8, 14)
-    slot = dur / notes
-    out = np.zeros(int(SR * dur))
-    for i in range(notes):
-        note_dur = slot * RNG.uniform(0.25, 0.4)
-        start = int(SR * slot * i)
-        seg = pick_waveform(freq, note_dur)
-        # Sharp attack, exponential decay
-        decay = np.exp(-8 * np.linspace(0, 1, len(seg)))
-        seg *= decay
-        end = start + len(seg)
-        if end > len(out):
-            seg = seg[:len(out) - start]
-            end = len(out)
-        out[start:end] = seg
-    return out, [{"label": "spiccato", "start": 0.0, "end": dur}]
-
-
-def gen_dead_note(freq, dur):
-    """Muted percussive hit with no sustain."""
-    tt = t(dur)
-    # Noise burst with fast decay, minimal pitch content
-    noise = RNG.normal(0, 1, len(tt))
-    hit_dur = RNG.uniform(0.02, 0.05)
-    hit_samples = int(SR * hit_dur)
-    env = np.zeros(len(tt))
-    env[:hit_samples] = np.exp(-20 * np.linspace(0, 1, hit_samples))
-    sig = noise * env
-    sig = lowpass(sig, freq * RNG.uniform(2, 4))
-    return sig, [{"label": "dead_note", "start": 0.0, "end": hit_dur}]
-
-
-# --- Ornaments (new) ---
 
 def gen_scoop(freq, dur):
     """Approach a note from below."""
@@ -585,66 +458,6 @@ def gen_roll(freq, dur):
     return out, [{"label": "roll", "start": 0.0, "end": dur}]
 
 
-def gen_flam(freq, dur):
-    """Two near-simultaneous hits."""
-    tt = t(dur)
-    sig = np.zeros(len(tt))
-    flam_gap = RNG.uniform(0.015, 0.04)
-    # Scale hit duration with frequency
-    min_hit_dur = max(4.0 / freq, 0.015)
-    hit_dur = RNG.uniform(min_hit_dur, min_hit_dur * 2)
-    noise_mix = np.clip(0.1 + (freq - 80) / 1000, 0.05, 0.4)
-    decay_rate = np.clip(10 + (freq - 80) / 30, 8, 30)
-
-    for offset, amp in [(0.0, 0.5), (flam_gap, 1.0)]:
-        start = int(SR * offset)
-        n_samp = int(SR * hit_dur)
-        if start + n_samp > len(sig):
-            break
-        tt_hit = np.linspace(0, hit_dur, n_samp)
-        hit = np.sin(2 * np.pi * freq * tt_hit)
-        hit += RNG.normal(0, noise_mix, n_samp)
-        hit *= np.exp(-decay_rate * np.linspace(0, 1, n_samp)) * amp
-        sig[start:start + n_samp] += hit
-
-    # Sustain rest of duration quietly
-    tail_start = int(SR * (flam_gap + hit_dur))
-    if tail_start < len(sig):
-        tail = pick_waveform(freq, dur - flam_gap - hit_dur) * 0.15
-        end = tail_start + len(tail)
-        if end > len(sig):
-            tail = tail[:len(sig) - tail_start]
-            end = len(sig)
-        sig[tail_start:end] = tail
-    return sig, [{"label": "flam", "start": 0.0, "end": round(flam_gap + hit_dur, 4)}]
-
-
-def gen_ghost_note(freq, dur):
-    """Very quiet, muffled notes within a pattern."""
-    notes = RNG.integers(6, 10)
-    slot = dur / notes
-    out = np.zeros(int(SR * dur))
-    ghost_indices = set(RNG.choice(notes, size=max(1, notes // 2), replace=False))
-    for i in range(notes):
-        start = int(SR * slot * i)
-        seg = pick_waveform(freq, slot * 0.5)
-        fade = int(SR * 0.008)
-        if fade > 0 and fade < len(seg):
-            seg[:fade] *= np.linspace(0, 1, fade)
-            seg[-fade:] *= np.linspace(1, 0, fade)
-        if i in ghost_indices:
-            seg *= RNG.uniform(0.05, 0.15)
-            seg = lowpass(seg, freq * 2)
-        else:
-            seg *= 0.7
-        end = start + len(seg)
-        if end > len(out):
-            seg = seg[:len(out) - start]
-            end = len(out)
-        out[start:end] = seg
-    return out, [{"label": "ghost_note", "start": 0.0, "end": dur}]
-
-
 def gen_choke(freq, dur):
     """Abrupt muting of a resonant sound."""
     tt = t(dur)
@@ -665,84 +478,6 @@ def gen_choke(freq, dur):
     sig *= env
     choke_start = ring_samples / SR
     return sig, [{"label": "choke", "start": round(choke_start, 4), "end": round(choke_start + cut_dur, 4)}]
-
-
-# --- String / plucked ---
-
-def gen_pizzicato(freq, dur):
-    """Plucked string: sharp attack, fast decay, rich harmonics."""
-    tt = t(dur)
-    # Multiple harmonics for richness
-    sig = np.zeros(len(tt))
-    for k in range(1, 6):
-        amp = 1.0 / k
-        sig += amp * np.sin(2 * np.pi * freq * k * tt)
-    # Fast exponential decay
-    decay_rate = RNG.uniform(6, 12)
-    env = np.exp(-decay_rate * tt / dur)
-    sig *= env
-    return sig, [{"label": "pizzicato", "start": 0.0, "end": dur}]
-
-
-def gen_hammer_on(freq, dur):
-    """Hammer-on: second note sounds without a new attack."""
-    tt = t(dur)
-    interval = RNG.choice([2, 3, 4, 5])
-    freq2 = freq * (2 ** (interval / 12))
-    mid = len(tt) // 2
-    # First note: normal attack + decay
-    inst_freq = np.ones(len(tt)) * freq
-    inst_freq[mid:] = freq2
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    sig = np.sin(phase)
-    # Smooth transition (no re-attack)
-    env = np.ones(len(tt))
-    env[:mid] = np.exp(-2 * np.linspace(0, 1, mid))
-    env[mid:] = env[mid - 1] * np.exp(-3 * np.linspace(0, 1, len(tt) - mid))
-    # Small bump at hammer point
-    bump_len = int(SR * 0.01)
-    if mid + bump_len < len(env):
-        env[mid:mid + bump_len] *= 1.3
-    sig *= env
-    hammer_time = mid / SR
-    return sig, [{"label": "hammer_on", "start": round(hammer_time, 4),
-                  "end": round(hammer_time + 0.05, 4)}]
-
-
-def gen_slide(freq, dur):
-    """Short, percussive pitch slide between two notes."""
-    tt = t(dur)
-    interval = RNG.choice([-7, -5, -3, 3, 5, 7])
-    freq2 = freq * (2 ** (interval / 12))
-    slide_dur = RNG.uniform(0.05, 0.15)
-    slide_start = RNG.uniform(0.2, 0.5) * dur
-    slide_samples = int(SR * slide_dur)
-    slide_start_samp = int(SR * slide_start)
-    slide_end_samp = slide_start_samp + slide_samples
-    inst_freq = np.ones(len(tt)) * freq
-    if slide_end_samp < len(tt):
-        inst_freq[slide_start_samp:slide_end_samp] = np.linspace(freq, freq2, slide_samples)
-        inst_freq[slide_end_samp:] = freq2
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    sig = np.sin(phase)
-    return sig, [{"label": "slide", "start": round(slide_start, 4),
-                  "end": round(slide_start + slide_dur, 4)}]
-
-
-# --- Wind ---
-
-def gen_flutter(freq, dur):
-    """Flutter tongue: rapid amplitude + pitch modulation."""
-    tt = t(dur)
-    flutter_rate = RNG.uniform(20, 35)
-    # Pitch flutter
-    inst_freq = freq + RNG.uniform(2, 5) * np.sin(2 * np.pi * flutter_rate * tt)
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    sig = np.sin(phase)
-    # Amplitude flutter
-    amp_mod = 0.7 + 0.3 * np.sin(2 * np.pi * flutter_rate * tt)
-    sig *= amp_mod
-    return sig, [{"label": "flutter", "start": 0.0, "end": dur}]
 
 
 def gen_arpeggio(freq, dur):
@@ -779,32 +514,21 @@ def gen_arpeggio(freq, dur):
 # Used for composing compatible techniques
 GENERATORS = {
     "dynamics": [
-        gen_crescendo, gen_decrescendo, gen_sforzando, gen_swell,
-        gen_fortepiano, gen_subito_forte, gen_subito_piano, gen_morendo,
+        gen_crescendo, gen_decrescendo, gen_swell, gen_subito_piano, gen_accent,
     ],
     "ornaments": [
-        gen_vibrato, gen_tremolo, gen_trill, gen_glissando,
-        gen_mordent, gen_grace_note, gen_pitch_bend, gen_turn, gen_portamento,
-        gen_scoop, gen_fall_off,
+        gen_vibrato, gen_trill, gen_glissando,
+        gen_grace_note, gen_pitch_bend,
+        gen_scoop, gen_fall_off, gen_arpeggio,
     ],
     "articulation": [
-        gen_staccato, gen_legato, gen_marcato, gen_tenuto, gen_portato, gen_accent,
-        gen_spiccato, gen_dead_note,
+        gen_staccato, gen_legato,
     ],
     "tempo": [
-        gen_accelerando, gen_ritardando, gen_rubato, gen_fermata, gen_caesura,
-    ],
-    "timbre": [
-        gen_muted, gen_distortion, gen_palm_mute, gen_harmonics,
+        gen_accelerando, gen_ritardando, gen_fermata, gen_caesura,
     ],
     "percussion": [
-        gen_roll, gen_flam, gen_ghost_note, gen_choke,
-    ],
-    "string": [
-        gen_pizzicato, gen_hammer_on, gen_slide,
-    ],
-    "wind": [
-        gen_flutter, gen_arpeggio,
+        gen_roll, gen_choke,
     ],
 }
 
@@ -831,57 +555,39 @@ def overlay_swell(sig, dur):
     env = np.concatenate([np.linspace(0.05, 1.0, mid), np.linspace(1.0, 0.05, n - mid)])
     return sig * env, {"label": "swell", "start": 0.0, "end": dur}
 
-def overlay_morendo(sig, dur):
-    env = np.exp(-RNG.uniform(2, 5) * np.linspace(0, 1, len(sig)))
-    return sig * env, {"label": "morendo", "start": 0.0, "end": dur}
-
-def overlay_tremolo(sig, dur):
-    tt = np.linspace(0, dur, len(sig))
-    rate = RNG.uniform(5, 10)
-    depth = RNG.uniform(0.5, 0.9)
-    env = 1.0 - depth * 0.5 * (1 + np.sin(2 * np.pi * rate * tt))
-    return sig * env, {"label": "tremolo", "start": 0.0, "end": dur}
-
 def overlay_vibrato(sig, dur, freq):
-    tt = t(dur)
-    n = min(len(tt), len(sig))
+    """Impart vibrato on an existing signal via a modulated fractional delay,
+    preserving the base technique's amplitude envelope and articulation.
+
+    (freq is unused — kept for the generic freq-overlay call signature.)
+    """
+    n = len(sig)
+    tt = t(dur)[:n]
     vib_rate = RNG.uniform(4, 7)
-    vib_depth = RNG.uniform(3, 15)
-    inst_freq = freq + vib_depth * np.sin(2 * np.pi * vib_rate * tt[:n])
-    phase = 2 * np.pi * np.cumsum(inst_freq) / SR
-    return np.sin(phase), {"label": "vibrato", "start": 0.0, "end": dur}
+    depth_samp = RNG.uniform(0.3, 1.2) / 1000 * SR   # 0.3-1.2 ms delay swing
+    mod = depth_samp * (1 + np.sin(2 * np.pi * vib_rate * tt)) / 2  # 0..depth
+    idx = np.arange(n) - mod
+    np.clip(idx, 0, n - 1, out=idx)
+    i0 = np.floor(idx).astype(int)
+    i1 = np.minimum(i0 + 1, n - 1)
+    frac = idx - i0
+    out = sig[i0] * (1 - frac) + sig[i1] * frac
+    return out, {"label": "vibrato", "start": 0.0, "end": dur}
 
-def overlay_distortion(sig, dur):
-    gain = RNG.uniform(3, 8)
-    return np.tanh(sig * gain), {"label": "distortion", "start": 0.0, "end": dur}
-
-def overlay_muted(sig, dur, freq):
-    cutoff = freq * RNG.uniform(1.5, 2.5)
-    return lowpass(sig, cutoff), {"label": "muted", "start": 0.0, "end": dur}
-
-# Each overlay tagged with a kind so we know which arg signature to use.
-# "amp" = (sig, dur), "sig" = (sig, dur), "freq" = (sig, dur, freq)
 ALL_OVERLAYS = [
     ("amp",  overlay_crescendo),
     ("amp",  overlay_decrescendo),
     ("amp",  overlay_swell),
-    ("amp",  overlay_morendo),
-    ("amp",  overlay_tremolo),
-    ("sig",  overlay_distortion),
     ("freq", overlay_vibrato),
-    ("freq", overlay_muted),
 ]
 
 # Which overlay kinds are compatible with each base category.
 COMPATIBLE_KINDS = {
-    "ornaments":     {"amp", "sig"},
-    "timbre":        {"amp"},
-    "articulation":  {"amp", "freq"},
-    "tempo":         {"amp", "freq"},
-    "dynamics":      {"sig", "freq"},
-    "percussion":    {"amp"},
-    "string":        {"amp", "sig"},
-    "wind":          {"amp"},
+    "ornaments":      {"amp"},
+    "articulation":   {"amp", "freq"},
+    "tempo":          {"amp", "freq"},
+    "dynamics":       {"freq"},
+    "percussion":     {"amp"},
 }
 
 
@@ -951,7 +657,7 @@ def generate_sample(idx, n_total):
     # Cap overlay labels: ideal count is n_total / num_labels.
     # Drop overlay annotations (not the base) if they exceed 1.5x the ideal.
     ideal = n_total / len(ALL_GENERATORS)
-    cap = ideal * 1.5
+    cap = ideal * 1.2
     if len(anns) > 1:
         filtered = [anns[0]]
         for ann in anns[1:]:
@@ -961,6 +667,11 @@ def generate_sample(idx, n_total):
 
     for ann in anns:
         _label_counts[ann["label"]] = _label_counts.get(ann["label"], 0) + 1
+
+    # Mix background music (if available) at random SNR
+    if _bg_pool:
+        bg_snr = RNG.uniform(-5, 15)  # technique can be quieter than background
+        sig = mix_background(sig, bg_snr)
 
     snr = RNG.uniform(20, 50)
     sig = add_noise(sig, snr_db=snr)
@@ -984,6 +695,8 @@ def main():
     parser.add_argument("-n", type=int, default=3000,
                         help="Number of samples to generate")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--background_dir", default=None,
+                        help="Directory of MP3s/WAVs to mix under synthetic samples")
     args = parser.parse_args()
 
     global RNG, _label_counts, _gen_cycle_idx
@@ -991,10 +704,16 @@ def main():
     _label_counts = {}
     _gen_cycle_idx = 0
 
+    if args.background_dir:
+        print(f"Loading background audio from {args.background_dir}...")
+        load_backgrounds(args.background_dir)
+
     audio_dir = os.path.join(args.out_dir, "audio")
     label_dir = os.path.join(args.out_dir, "labels")
+    cache_dir = os.path.join(args.out_dir, "mel_cache")
     os.makedirs(audio_dir, exist_ok=True)
     os.makedirs(label_dir, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
 
     label_counts = {}
 
@@ -1010,6 +729,18 @@ def main():
         json_path = os.path.join(label_dir, f"{i:04d}.json")
         with open(json_path, "w") as f:
             json.dump(anns, f, indent=2)
+
+        # Compute and cache mel spectrogram. Decode straight from the int16
+        # PCM (sig * 0.8, quantized) so the cache is bit-identical to what
+        # cnn.FeatureExtractor produces from the WAV at inference time.
+        y = pcm.astype(np.float32) / 32768.0
+        y = librosa.resample(y, orig_sr=SR, target_sr=MEL_SR)
+        mel = librosa.feature.melspectrogram(
+            y=y, sr=MEL_SR, n_fft=MEL_N_FFT,
+            hop_length=MEL_HOP, n_mels=MEL_N_MELS,
+        )
+        mel = np.log(np.maximum(mel, 1e-10)).astype(np.float32)
+        np.save(os.path.join(cache_dir, f"{i:04d}.npy"), mel)
 
         # Track counts
         for ann in anns:
