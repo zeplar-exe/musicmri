@@ -24,6 +24,7 @@ Data format:
 import json
 import os
 import glob
+import sys
 from tqdm import tqdm
 import argparse
 import numpy as np
@@ -31,6 +32,42 @@ import librosa
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+
+
+# ============================================================
+# Progress logging
+# ============================================================
+
+INT_LOG_INTERVAL = 150  # seconds between progress lines under --int-log
+
+
+class _IntervalLog:
+    """File object that turns tqdm's \\r refreshes into newline-terminated
+    lines, for clean append-only progress in redirected log files."""
+
+    def __init__(self, stream=sys.stdout):
+        self.stream = stream
+
+    def write(self, s):
+        s = s.strip("\r\n")
+        if s:
+            self.stream.write(s + "\n")
+            self.stream.flush()
+
+    def flush(self):
+        self.stream.flush()
+
+
+def _tqdm_kwargs(int_log):
+    """tqdm kwargs: interval-throttled newline logging when int_log is set,
+    otherwise a normal live progress bar."""
+    if not int_log:
+        return {}
+    return {
+        "file": _IntervalLog(),
+        "mininterval": INT_LOG_INTERVAL,
+        "bar_format": "{desc}: {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+    }
 
 
 # ============================================================
@@ -122,20 +159,6 @@ class TechniqueDataset(Dataset):
                 f"No matched audio/label pairs found in {data_dir}. "
                 f"Expected audio/*.wav and labels/*.json with matching names."
             )
-
-        # Precompute mel cache if missing or stale
-        uncached = [s for s in self.samples
-                    if not os.path.exists(s[2])
-                    or os.path.getmtime(s[0]) > os.path.getmtime(s[2])]
-        if uncached:
-            os.makedirs(cache_dir, exist_ok=True)
-            print(f"Caching {len(uncached)} mel spectrograms...")
-            for i, (wav_path, _, cache_path) in enumerate(uncached):
-                mel = self.fe(wav_path)
-                np.save(cache_path, mel)
-                if (i + 1) % 500 == 0:
-                    print(f"  {i + 1}/{len(uncached)}")
-            print(f"  Cached to {cache_dir}")
 
     def __len__(self):
         return len(self.samples)
@@ -448,7 +471,88 @@ def sweep_thresholds(model, loader, device, labels):
     return thresholds
 
 
-def train(data_dir, epochs=50, batch_size=16, lr=1e-3, val_frac=0.1, device=None):
+@torch.no_grad()
+def evaluate_at_thresholds(data_dir, model_path, val_frac=0.1, batch_size=16,
+                           device=None):
+    """Score a saved model on its validation split WITHOUT retraining.
+
+    Reports per-label precision/recall/F1 at BOTH thr=0.5 and the tuned
+    per-label thresholds stored in the checkpoint. Inference only.
+
+    It reproduces train()'s seed-42 split, so the val set is identical to the
+    one used during training -- provided --val_frac matches and the data dir is
+    unchanged (file order is deterministic, see TechniqueDataset: sorted glob).
+    Consequence: the f1@.5 column reproduces the table train() printed, which
+    doubles as a check that the split lined up.
+    """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+    print(f"Device: {device}")
+
+    checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+    fe_params = checkpoint["fe_params"]
+    labels = checkpoint["labels"]
+    tuned = checkpoint.get("thresholds", {})
+
+    fe = FeatureExtractor(**fe_params)
+    dataset = TechniqueDataset(data_dir, fe)
+    print(f"Loaded {len(dataset)} samples")
+
+    # Reproduce train()'s deterministic train/val split (same seed + frac)
+    n_val = max(1, int(len(dataset) * val_frac))
+    n_train = len(dataset) - n_val
+    split_gen = torch.Generator().manual_seed(42)
+    _, val_ds = torch.utils.data.random_split(
+        dataset, [n_train, n_val], generator=split_gen)
+    val_loader = DataLoader(
+        val_ds, batch_size=batch_size, shuffle=False,
+        collate_fn=collate_fn, num_workers=0)
+    print(f"Val: {n_val}")
+
+    model = TechniqueCNN(n_mels=fe_params["n_mels"], num_labels=len(labels)).to(device)
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+
+    num_labels = len(labels)
+    thr_vec = torch.tensor(
+        [tuned.get(lab, 0.5) for lab in labels], device=device).view(1, -1, 1)
+
+    # Accumulate TP/FP/FN at 0.5 and at tuned thresholds in a single pass
+    acc = {"half": [torch.zeros(num_labels) for _ in range(3)],
+           "tuned": [torch.zeros(num_labels) for _ in range(3)]}
+
+    for mel_batch, label_batch, lengths in tqdm(val_loader, desc="Eval"):
+        mel_batch = mel_batch.to(device)
+        label_batch = label_batch.to(device)
+        probs = torch.sigmoid(model(mel_batch, lengths))
+        mask = make_frame_mask(lengths, label_batch.shape[-1], device)
+        tgt = label_batch * mask
+        for key, thr in (("half", 0.5), ("tuned", thr_vec)):
+            pred = (probs >= thr).float() * mask
+            tp, fp, fn = acc[key]
+            tp += (pred * tgt).sum(dim=(0, 2)).cpu()
+            fp += (pred * (1 - tgt)).sum(dim=(0, 2)).cpu()
+            fn += ((1 - pred) * tgt).sum(dim=(0, 2)).cpu()
+
+    def prf(tp, fp, fn):
+        prec = tp / (tp + fp).clamp(min=1)
+        rec = tp / (tp + fn).clamp(min=1)
+        f1 = 2 * prec * rec / (prec + rec).clamp(min=1e-8)
+        return prec, rec, f1
+
+    _, _, f5 = prf(*acc["half"])
+    pt, rt, ft = prf(*acc["tuned"])
+
+    print("\nPer-label validation metrics  (f1@0.5  ->  metrics at tuned thr):")
+    print(f"  {'label':14s} {'f1@.5':>6s}   {'P@thr':>6s} {'R@thr':>6s} {'f1@thr':>7s}  {'thr':>6s}")
+    for li, lab in enumerate(labels):
+        print(f"  {lab:14s} {f5[li]:6.2f}   {pt[li]:6.2f} {rt[li]:6.2f} {ft[li]:7.2f}  "
+              f"{tuned.get(lab, 0.5):6.3f}")
+    print(f"\n  macro-F1:  @0.5 = {f5.mean():.3f}    @tuned = {ft.mean():.3f}")
+
+
+def train(data_dir, epochs=50, batch_size=16, lr=1e-3, val_frac=0.1, device=None,
+          int_log=False):
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Device: {device}")
@@ -487,7 +591,8 @@ def train(data_dir, epochs=50, batch_size=16, lr=1e-3, val_frac=0.1, device=None
         total_loss = 0
         n_batches = 0
 
-        for mel_batch, label_batch, lengths in tqdm(train_loader, desc=f"Epoch {epoch}"):
+        for mel_batch, label_batch, lengths in tqdm(
+                train_loader, desc=f"Epoch {epoch}", **_tqdm_kwargs(int_log)):
             mel_batch = spec_augment(mel_batch.to(device))
             label_batch = label_batch.to(device)
 
@@ -540,7 +645,8 @@ def train(data_dir, epochs=50, batch_size=16, lr=1e-3, val_frac=0.1, device=None
 
 
 def finetune(model_path, data_dir, epochs=20, batch_size=8, lr=1e-4,
-             base_data_dir=None, base_weight=0.5, save_path=None, device=None):
+             base_data_dir=None, base_weight=0.5, save_path=None, device=None,
+             int_log=False):
     """Load existing model and fine-tune on corrected data, optionally mixed
     with original training data to prevent catastrophic forgetting.
 
@@ -625,7 +731,8 @@ def finetune(model_path, data_dir, epochs=20, batch_size=8, lr=1e-4,
         total_loss = 0
         n_batches = 0
 
-        for mel_batch, label_batch, lengths in loader:
+        for mel_batch, label_batch, lengths in tqdm(
+                loader, desc=f"FT epoch {epoch}", **_tqdm_kwargs(int_log)):
             mel_batch = spec_augment(mel_batch.to(device))
             label_batch = label_batch.to(device)
 
@@ -763,11 +870,7 @@ def separate_stems(audio_path, device=None):
     import soundfile as sf
 
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-
-    # htdemucs_6s doesn't support MPS — fall back to CPU
-    if device == "mps":
-        device = "cpu"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = get_model("htdemucs_6s")
     model.to(device)
@@ -887,6 +990,8 @@ if __name__ == "__main__":
     p_train.add_argument("--lr", type=float, default=1e-3)
     p_train.add_argument("--val_frac", type=float, default=0.1,
                          help="Fraction of data held out for validation")
+    p_train.add_argument("--int-log", action="store_true",
+                         help="Throttled newline progress lines for log files")
 
     p_pred = sub.add_parser("predict")
     p_pred.add_argument("--audio", required=True)
@@ -906,12 +1011,24 @@ if __name__ == "__main__":
     p_ft.add_argument("--batch_size", type=int, default=8)
     p_ft.add_argument("--lr", type=float, default=1e-4)
     p_ft.add_argument("--save", default=None, help="Output path (default: overwrite)")
+    p_ft.add_argument("--int-log", action="store_true",
+                      help="Throttled newline progress lines for log files")
+
+    p_eval = sub.add_parser("eval", help="Score a trained model on its val split "
+                                         "at 0.5 and tuned thresholds (no retrain)")
+    p_eval.add_argument("--data_dir", required=True,
+                        help="Same data dir the model was trained on")
+    p_eval.add_argument("--model", required=True, help="Trained model.pt")
+    p_eval.add_argument("--val_frac", type=float, default=0.1,
+                        help="MUST match the value used at train time (default 0.1)")
+    p_eval.add_argument("--batch_size", type=int, default=16)
 
     args = parser.parse_args()
 
     if args.command == "train":
         train(args.data_dir, epochs=args.epochs,
-              batch_size=args.batch_size, lr=args.lr, val_frac=args.val_frac)
+              batch_size=args.batch_size, lr=args.lr, val_frac=args.val_frac,
+              int_log=args.int_log)
     elif args.command == "predict":
         if args.stems:
             results = predict_stems(args.audio, args.model, threshold=args.threshold)
@@ -922,6 +1039,9 @@ if __name__ == "__main__":
         finetune(args.model, args.data_dir, epochs=args.epochs,
                  batch_size=args.batch_size, lr=args.lr,
                  base_data_dir=args.base_data, base_weight=args.base_weight,
-                 save_path=args.save)
+                 save_path=args.save, int_log=args.int_log)
+    elif args.command == "eval":
+        evaluate_at_thresholds(args.data_dir, args.model,
+                               val_frac=args.val_frac, batch_size=args.batch_size)
     else:
         parser.print_help()
