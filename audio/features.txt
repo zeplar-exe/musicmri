@@ -1,3 +1,43 @@
+Features in the technique detector (21 labels)
+==============================================
+
+The labels the detector currently predicts, grouped by the perceptual
+axis each one targets.
+
+Amplitude dynamics
+crescendo    — gradual rise in loudness across a passage.
+decrescendo  — gradual fall in loudness (diminuendo).
+swell        — loudness rises then falls within one sustained note.
+subito_piano — sudden drop to soft right after louder material.
+accent       — a single note struck harder, with a sharper attack.
+
+Articulation
+staccato     — notes shortened and detached, with gaps of silence.
+legato       — notes smoothly connected, no gaps between them.
+
+Pitch movement
+vibrato      — periodic small pitch wobble on a held note.
+trill        — fast alternation between a note and the one above it.
+glissando    — continuous slide in pitch from one note to another.
+grace_note   — very short ornamental note slurred into the main note.
+pitch_bend   — pitch bent away from the nominal note (often and back).
+scoop        — pitch slides up into a note from below at its onset.
+fall_off     — pitch slides down off a note as it ends.
+
+Tempo / rhythm
+accelerando  — gradual speeding up of the tempo.
+ritardando   — gradual slowing of the tempo.
+fermata      — a note or rest held longer than its written value.
+caesura      — a brief, full stop in sound that breaks the flow.
+
+Percussion / texture
+roll         — rapid reiteration of a note or chord (drum/rolled chord).
+choke        — a struck cymbal grabbed silent, cutting off its sustain.
+
+Pitch pattern
+arpeggio     — chord notes sounded in sequence rather than together.
+
+
 Features removed from the technique detector
 =============================================
 
