@@ -1,0 +1,46 @@
+ds002721: An EEG dataset recorded during affective music listening
+    https://openneuro.org/datasets/ds002721/versions/1.0.1
+    110 pieces
+ds002722: A dataset recorded during development of an affective brain-computer music interface: calibration session
+    EEG only
+    https://openneuro.org/datasets/ds002722/versions/1.0.1
+    Fully synthetic
+ds002724: A dataset recorded during development of an affective brain-computer music interface: training sessions
+    EEG only
+    https://openneuro.org/datasets/ds002724/versions/1.0.1
+    Fully synthetic
+ds002725: A dataset recording joint EEG-fMRI during affective music listening
+    https://openneuro.org/datasets/ds002725/versions/1.0.0
+    Synthetic + classical pieces
+NMED-T: Naturalistic Music EEG Dataset (Tempo)
+    https://exhibits.stanford.edu/data/catalog/jn859kj8079
+    https://archives.ismir.net/ismir2017/paper/000198.pdf
+    Downloaded from Amazon Music
+NMED-H: Naturalistic Music EEG Dataset (Hindi)
+    https://exhibits.stanford.edu/data/catalog/sd922db3535
+    https://stacks.stanford.edu/file/druid:sd922db3535/NMED-H_v2.3.0_README.pdf
+    Downloaded from Apple Music
+NMED-M: Naturalistic Music EEG Dataset (Minimal)
+    https://exhibits.stanford.edu/data/catalog/kt396gb0630
+    CleanEEG_stim21.mat = Original (excerpt from Reich’s Piano Phase)
+        https://music.apple.com/gb/song/piano-phase-1967/79577196
+    CleanEEG_stim24.mat = Remix x (Matt Winn’s Piano Phase (D*Note’s Phased & Konfused Mix))
+        https://music.apple.com/cl/song/piano-phase-d-notes-phased-konfused-mix/73237307
+    Excluded: Abrupt Change, Segment Shuffle, Tremolo alterations; generation methods unspecified
+NMED-E: Naturalistic Music EEG Dataset
+    https://purl.stanford.edu/pp371jh5722
+    CleanEEG_stim22.mat = Intact Elgar Cello Concerto
+        https://open.spotify.com/track/76bzcAMft1MGxK5BCjmA0T
+ds003720: Music Genre fMRI Dataset
+    https://openneuro.org/datasets/ds003720/versions/1.0.1
+    GTZAN dataset samples
+ds003774: MUSIN-G Genre EEG dataset
+    https://openneuro.org/datasets/ds003774/versions/1.0.2
+    https://www.sciencedirect.com/science/article/pii/S235234092200868X
+    Downlaoded from Apple Music
+    Excluded: Trip to the lonely planet- Mark Alow; missing song timestamps during EEG recording
+    Excluded: Aurore - Claire David; not available for download
+    Excluded: Fallin - Dr. SaxLove; not available for download
+    Excluded: Master of Running - Rickeyabo; not available for download
+
+Note to self: ensure download of official music only, not music videos or different cuts to avoid desyncs and artifacts

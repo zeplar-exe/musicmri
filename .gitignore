@@ -1,4 +1,18 @@
 .vscode/
+models/
+data/
+data=raw/
+data-bass/
+data-drums/
+data-guitar/
+data-other/
+data-piano/
+data-vocals/
+exemplars/
+background/
+*.json
+
+.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
