@@ -1,5 +1,6 @@
 import argparse
 import os
+import warnings
 from glob import glob
 
 import torch
@@ -8,12 +9,18 @@ from demucs.audio import AudioFile, save_audio
 from demucs.pretrained import get_model
 from tqdm import tqdm
 
+# demucs.save_audio -> torchaudio.save passes params (bits_per_sample, encoding, ...)
+# that TorchCodec's AudioEncoder ignores; the write still succeeds. Silence the
+# whole benign family.
+warnings.filterwarnings("ignore",
+                        message=r"The '.*' parameter is not .* supported by TorchCodec AudioEncoder")
+
 
 def is_junk(path):
     return os.path.basename(path).startswith("._") or "__MACOSX" in path
 
 
-def main(data_dir="data", model_name="htdemucs", device=None):
+def main(data_dir, model_name="htdemucs", device=None):
     if device is None:
         device = ("cuda" if torch.cuda.is_available()
                   else "mps" if torch.backends.mps.is_available()
@@ -24,8 +31,10 @@ def main(data_dir="data", model_name="htdemucs", device=None):
     model.eval()
 
     base = data_dir.rstrip("/")
-    files = sorted(f for f in glob(os.path.join(base, "**/*.wav"), recursive=True)
-                   if not is_junk(f))
+    wav_files = sorted(f for f in glob(os.path.join(base, "**/*.wav"), recursive=True) if not is_junk(f))
+    mp3_files = sorted(f for f in glob(os.path.join(base, "**/*.mp3"), recursive=True) if not is_junk(f))
+    flac_files = sorted(f for f in glob(os.path.join(base, "**/*.flac"), recursive=True) if not is_junk(f))
+    files = wav_files + mp3_files + flac_files
 
     print(f"Separating {len(files)} files with '{model_name}' on {device} "
           f"-> stems {model.sources}")
@@ -51,7 +60,7 @@ def main(data_dir="data", model_name="htdemucs", device=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Clone data/ into data-{stem}/ trees via Demucs source separation.")
-    parser.add_argument("--data_dir", default="data")
+    parser.add_argument("--data", dest="data_dir", required=True)
     parser.add_argument("--model", default="htdemucs", dest="model_name",
                         help="Demucs model. htdemucs = 4 stems (drums/bass/other/vocals); "
                              "htdemucs_6s adds guitar/piano (experimental quality).")

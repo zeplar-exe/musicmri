@@ -1,8 +1,12 @@
 import argparse
 import json
 import os
+import warnings
 from collections import defaultdict
 from glob import glob
+
+# cut out dead warnings
+warnings.filterwarnings("ignore", message=r"`build\(\)` was called on layer 'umap_model'")
 
 import librosa
 import soundfile as sf
@@ -18,11 +22,10 @@ from tqdm import tqdm
 SR = 22050 # to my knowledge, every .wav under inspection has sr=22050, whereas .mp3s need downsampling
 CHUNK_SIZE = 1.0 # seconds
 HOP_LENGTH = 512
-PCA_N_COMPONENTS = 200
+PCA_N_COMPONENTS = 500
 CHUNK_FRAMES = int(librosa.time_to_frames(CHUNK_SIZE, sr=SR, hop_length=HOP_LENGTH))
 CHUNK_DURATION = librosa.frames_to_time(CHUNK_FRAMES, sr=SR, hop_length=HOP_LENGTH) # true seconds/chunk (~0.998)
 N_MELS = 128
-PAD_DB = -80.0 # log-mel floor (power_to_db ref=np.max, top_db=80) (for padding short chunks)
 SEED = 42
 
 
@@ -34,27 +37,43 @@ def chunk_audio(audio):
     mel = librosa.feature.melspectrogram(y=audio, sr=SR, n_mels=N_MELS, hop_length=HOP_LENGTH)
     log_mel = librosa.power_to_db(mel, ref=np.max)
 
-    n_frames = log_mel.shape[1]
-    if n_frames == 0:
+    # Keep only whole 1s chunks; drop the trailing partial one. A sub-CHUNK_FRAMES
+    # tail is <1s (unusable in the neural analysis anyway) and, when padded out
+    # with silence, every file's tail looks alike -- they collapse into a spurious
+    # "fade-out" cluster. Dropping only the LAST chunk leaves every earlier chunk
+    # index (and thus its j * CHUNK_DURATION timestamp) untouched.
+    n_chunks = log_mel.shape[1] // CHUNK_FRAMES
+    if n_chunks == 0:
         return np.empty((0, N_MELS * CHUNK_FRAMES))
 
-    split_indices = np.arange(CHUNK_FRAMES, n_frames, CHUNK_FRAMES)
-    chunks = np.split(log_mel, split_indices, axis=1)
-
-    flattened = []
-    
-    for chunk in chunks:
-        if chunk.shape[1] < CHUNK_FRAMES:
-            pad = CHUNK_FRAMES - chunk.shape[1]
-            chunk = np.pad(chunk, ((0, 0), (0, pad)), mode="constant", constant_values=PAD_DB)
-        flattened.append(chunk.flatten())
-
+    flattened = [log_mel[:, k * CHUNK_FRAMES:(k + 1) * CHUNK_FRAMES].flatten()
+                 for k in range(n_chunks)]
     return np.array(flattened)
 
 
 def load_and_chunk(path, offset=0.0, duration=None):
     audio, _ = librosa.load(path, sr=SR, offset=offset, duration=duration)
     return chunk_audio(audio)
+
+
+def chunk_rms_db(audio):
+    """Per-chunk loudness for the energy gate: the MAX per-frame RMS within each
+    chunk, in absolute dBFS (ref=1.0, NOT per-file). Absolute reference is what
+    lets the gate tell a present instrument from a silent demucs residual.
+    Aligned to chunk_audio's chunk grid, so index j matches one-to-one."""
+    rms = librosa.feature.rms(y=audio, hop_length=HOP_LENGTH)[0]  # per-frame, linear
+    n_chunks = len(rms) // CHUNK_FRAMES  # whole chunks only, matching chunk_audio
+    out = []
+    for k in range(n_chunks):
+        seg = rms[k * CHUNK_FRAMES:(k + 1) * CHUNK_FRAMES]
+        out.append(20.0 * np.log10(float(seg.max()) + 1e-10))
+    return np.array(out)
+
+
+def _chunks_with_rms(path):
+    """chunk_audio + chunk_rms_db from a single load (train-side energy gate)."""
+    audio, _ = librosa.load(path, sr=SR)
+    return chunk_audio(audio), chunk_rms_db(audio)
 
 
 def _fit_norm(X, per_chunk, per_band):
@@ -84,7 +103,60 @@ def _apply_norm(X, norm):
     return X.astype(np.float32)
 
 
-def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False):
+def _write_summary(model_dir, score, labels, extra=[]):
+    labels = [int(x) for x in labels]
+    total = len(labels)
+    n_noise = sum(1 for x in labels if x == -1)
+    sizes = defaultdict(int)
+    
+    for x in labels:
+        if x != -1:
+            sizes[x] += 1
+    
+    vals = sorted(sizes.values())
+    n_clusters = len(vals)
+    mn = vals[0] if vals else 0
+    med = vals[len(vals) // 2] if vals else 0
+    mx = vals[-1] if vals else 0
+    
+    lines = [
+        f"Silhouette score: {score:.4f}",
+        f"Clusters found: {n_clusters}",
+        f"Noise points: {n_noise}/{total} ({n_noise / total:.1%})",
+        f"Cluster sizes: min {mn}, med {med}, max {mx}",
+    ]
+    
+    for e in extra:
+        if e is not None:
+            lines.append(e)
+
+    with open(os.path.join(model_dir, "summary.txt"), "w") as f:
+        for line in lines:
+            if line is not None:
+                f.write(line + "\n")
+
+    print(" | ".join(line for line in lines if line is not None))
+
+
+def _write_distributions(model_dir, files, labels):
+    """Per-file cluster breakdown (cluster_analysis.py layout), keyed by basename
+    -> model_dir/distributions.txt: how many chunks of each file fell in each
+    (non-noise) cluster."""
+    per_file = defaultdict(lambda: defaultdict(int))
+    for file, label in zip(files, labels):
+        bn = os.path.basename(file)
+        per_file[bn]  # ensure all-noise files still appear (with no clusters)
+        if int(label) != -1:
+            per_file[bn][int(label)] += 1
+    with open(os.path.join(model_dir, "distributions.txt"), "w") as f:
+        for name in sorted(per_file):
+            f.write(f"File {name}:\n")
+            for cluster, count in sorted(per_file[name].items()):
+                f.write(f"  Cluster {cluster}: {count} chunks\n")
+
+
+def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
+          mcs_min=5, mcs_max=50, mcs_step=5, min_samples=None, min_rms=None):
     keras.utils.set_random_seed(SEED) # seed for UMAP encoder
     embedder = ParametricUMAP(n_components=50, n_neighbors=15, random_state=SEED)
 
@@ -94,26 +166,56 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False):
 
     wav_files = sorted(glob(os.path.join(data_dir, "**/*.wav"), recursive=True))
     mp3_files = sorted(glob(os.path.join(data_dir, "**/*.mp3"), recursive=True))
-    files = wav_files + mp3_files
+    flac_files = sorted(glob(os.path.join(data_dir, "**/*.flac"), recursive=True))
+    files = wav_files + mp3_files + flac_files
     if limit is not None:
         files = files[:limit]
 
+    seen_chunks = 0  # total chunks before the energy gate, for the drop log
     for file in tqdm(files, desc="Loading audio files"):
         if is_junk(file):
             continue
-        
+
         try:
-            chunked = load_and_chunk(file)
+            chunked, rms_db = _chunks_with_rms(file)
         except Exception as e:
             print(f"Error loading {file}: {e}")
-            chunked = []
-        
+            chunked, rms_db = [], []
+
         if len(chunked) == 0:
             continue
-        
-        samples.extend(chunked)
-        sample_map.extend([file] * len(chunked))
-        time_map.extend([j * CHUNK_DURATION for j in range(len(chunked))])
+
+        # Energy gate: drop near-silent chunks (max per-frame RMS below min_rms dBFS).
+        # j is the ORIGINAL chunk index so surviving chunks keep their true start
+        # time -- dropping a rest must not shift downstream timestamps.
+        for j, chunk in enumerate(chunked):
+            seen_chunks += 1
+            if min_rms is not None and rms_db[j] < min_rms:
+                continue
+            samples.append(chunk)
+            sample_map.append(file)
+            time_map.append(j * CHUNK_DURATION)
+
+    gate_note = None
+
+    if min_rms is not None:
+        dropped = seen_chunks - len(samples)
+        gate_note = f"Gate dropped {dropped}/{seen_chunks} chunks < {min_rms:g} dBFS"
+        print(f"Energy gate: {gate_note}")
+
+    # Too few chunks to cluster: you can't form a cluster of size mcs_max, and
+    # HDBSCAN's prediction KD-tree query needs >= min_samples points. A handful
+    # of survivors past a gate means the stem is essentially silent (e.g. an
+    # absent instrument's demucs residual) -- skip it cleanly instead of letting
+    # PCA/UMAP/HDBSCAN crash on a degenerate input.
+    min_needed = max(mcs_max, min_samples or 0)
+    if len(samples) < min_needed:
+        reason = f"only {len(samples)}/{seen_chunks} chunks survived"
+        if min_rms is not None:
+            reason += f" the {min_rms:g} dBFS energy gate (stem likely silent)"
+        raise RuntimeError(
+            f"Too few chunks to cluster ({reason}, need >= {min_needed}); "
+            f"skipping {data_dir}.")
 
     samples = np.asarray(samples, dtype=np.float32)
     print(f"Total samples: {len(samples)}")
@@ -135,8 +237,11 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False):
     best_labels = None
     best_model = None
 
-    for size in range(5, 51, 5):
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=size, prediction_data=True)
+    for size in range(mcs_min, mcs_max + 1, mcs_step):
+        # min_samples=None lets HDBSCAN default it to min_cluster_size (its native
+        # behavior). Set it to decouple the noise/conservatism dial from cluster size.
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=size, min_samples=min_samples,
+                                    prediction_data=True)
         labels = clusterer.fit_predict(embedding)
 
         mask = labels != -1
@@ -153,9 +258,6 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False):
     if best_model is None:
         raise RuntimeError("No valid clustering found: every min_cluster_size produced <2 clusters.")
 
-    n_clusters = len(set(best_labels[best_labels != -1]))
-    print(f"Best silhouette: {best_score:.4f} with {n_clusters} clusters")
-
     os.makedirs(model_dir, exist_ok=True)
     embedder.encoder.save(os.path.join(model_dir, "umap_encoder.keras"))
     joblib.dump(pca, os.path.join(model_dir, "pca.joblib"))
@@ -163,6 +265,8 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False):
     joblib.dump(norm, os.path.join(model_dir, "normalizer.joblib"))
 
     _dump_clusters(model_dir, sample_map, time_map, best_labels, best_model.probabilities_)
+    _write_summary(model_dir, best_score, best_labels, extra=[gate_note])
+    _write_distributions(model_dir, sample_map, best_labels)
 
 
 
@@ -185,9 +289,7 @@ def _predict_chunks(log_mels, encoder, pca, clusterer, norm):
 
 
 def _predict_soft(log_mels, encoder, pca, clusterer, norm):
-    """Soft membership: (n_chunks, n_clusters) probability over the real clusters.
-    Column j is cluster id j; rows need not sum to 1 and argmax may differ from
-    approximate_predict's hard label."""
+    """Probability cluster membership."""
     log_mels = _apply_norm(log_mels, norm)
     embedding = encoder.predict(pca.transform(log_mels).astype(np.float32), verbose=0)
     return np.atleast_2d(hdbscan.membership_vector(clusterer, embedding))
@@ -213,7 +315,8 @@ def regenerate(data_dir, model_dir):
 
     wav_files = sorted(f for f in glob(os.path.join(data_dir, "**/*.wav"), recursive=True) if not is_junk(f))
     mp3_files = sorted(f for f in glob(os.path.join(data_dir, "**/*.mp3"), recursive=True) if not is_junk(f))
-    files = wav_files + mp3_files
+    flac_files = sorted(f for f in glob(os.path.join(data_dir, "**/*.flac"), recursive=True) if not is_junk(f))
+    files = wav_files + mp3_files + flac_files
 
     sample_map, time_map, all_labels, all_strengths = [], [], [], []
     for file in tqdm(files, desc="Predicting chunks"):
@@ -268,12 +371,8 @@ def predict(mus_file, model_dir, start_time=0.0, end_time=None, soft=False, top_
     return results
 
 
-def exemplars(cluster_id, model_dir, n=10, out_dir="exemplars"):
-    """Save the n highest-membership-strength audio chunks of one cluster."""
-    with open(os.path.join(model_dir, "clusters.json")) as f:
-        clusters = json.load(f)
-
-    records = clusters.get(str(cluster_id))
+def _write_exemplar(records, cluster_id, n, out_dir):
+    """Concatenate the n highest-strength chunks of one cluster into a wav."""
     if not records:
         print(f"No chunks were assigned to cluster {cluster_id}.")
         return
@@ -299,6 +398,22 @@ def exemplars(cluster_id, model_dir, n=10, out_dir="exemplars"):
     sf.write(out_path, out, SR)
 
     print(f"Wrote top {len(top)} of {len(records)} exemplars -> {out_path}")
+
+
+def exemplars(cluster_id, model_dir, n=10, out_dir="exemplars"):
+    """Save the n highest-strength audio chunks of one cluster, or of every
+    cluster (noise excluded) when cluster_id is None."""
+    with open(os.path.join(model_dir, "clusters.json")) as f:
+        clusters = json.load(f)
+
+    if cluster_id is None:
+        for key in sorted(clusters, key=int):
+            if int(key) == -1:  # noise isn't a signature; skip it
+                continue
+            _write_exemplar(clusters[key], int(key), n, out_dir)
+        return
+
+    _write_exemplar(clusters.get(str(cluster_id)), cluster_id, n, out_dir)
 
 
 DESCRIPTOR_NAMES = ["rms_db", "centroid", "bandwidth", "flux", "onset_rate"]
@@ -362,7 +477,6 @@ def cluster_means(model_dir):
 
 def name_clusters(labels, means):
     """Build the LCBFO label for each cluster (digit = 0-9 position between min/max)."""
-    # scale each feature 0-9 relative to its min/max across real clusters (noise -1 excluded)
     real = [lab for lab in labels if lab != -1] or labels
     lo = {nm: min(means[lab][nm] for lab in real) for nm in DESCRIPTOR_NAMES}
     hi = {nm: max(means[lab][nm] for lab in real) for nm in DESCRIPTOR_NAMES}
@@ -408,6 +522,19 @@ if __name__ == "__main__":
                          help="Per-chunk loudness normalization (remove each chunk's dB level).")
     p_train.add_argument("--per-band", action="store_true",
                          help="Per-band z-score across the corpus (remove average spectral shape).")
+    p_train.add_argument("--mcs-min", type=int, default=5,
+                         help="Smallest HDBSCAN min_cluster_size to try (default 5).")
+    p_train.add_argument("--mcs-max", type=int, default=50,
+                         help="Largest HDBSCAN min_cluster_size to try (default 50).")
+    p_train.add_argument("--mcs-step", type=int, default=5,
+                         help="Step between min_cluster_size values in the sweep (default 5).")
+    p_train.add_argument("--min-samples", type=int, default=None,
+                         help="HDBSCAN min_samples: the noise/conservatism dial. Higher = more "
+                              "points become noise. Default: tied to each min_cluster_size.")
+    p_train.add_argument("--min-rms", type=float, default=None,
+                         help="Energy gate (dBFS): drop chunks whose max per-frame RMS is below "
+                              "this before clustering. Absolute reference. Default off; try -50 "
+                              "for stems to skip silence/absent-instrument residual.")
 
     p_regen = sub.add_parser("regenerate", help="Rebuild clusters.json from saved models without retraining.")
     p_regen.add_argument("--data", dest="data_dir",  required=True)
@@ -423,11 +550,12 @@ if __name__ == "__main__":
     p_pred.add_argument("--top-k", dest="top_k", type=int, default=3,
                         help="With --soft, how many top clusters to show per chunk.")
 
-    p_ex = sub.add_parser("exemplars", help="Save the top-n-strength audio snippets of one cluster.")
-    p_ex.add_argument("cluster", type=int)
+    p_ex = sub.add_parser("exemplars", help="Save the top-n-strength audio snippets of one cluster (or all).")
+    p_ex.add_argument("cluster", type=int, nargs="?", default=None,
+                      help="Cluster id. Omit to write exemplars for every cluster (noise excluded).")
     p_ex.add_argument("--model", dest="model_dir", required=True)
     p_ex.add_argument("--n", type=int, default=10)
-    p_ex.add_argument("--out_dir", default="exemplars")
+    p_ex.add_argument("--out", dest="out_dir", default="exemplars")
 
     p_prof = sub.add_parser("profile", help="Mean of named acoustic descriptors per cluster.")
     p_prof.add_argument("--model", dest="model_dir", required=True)
@@ -435,7 +563,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.command == "train":
-        train(args.data_dir, args.model_dir, args.limit, args.per_chunk, args.per_band)
+        train(args.data_dir, args.model_dir, args.limit, args.per_chunk, args.per_band,
+              args.mcs_min, args.mcs_max, args.mcs_step, args.min_samples, args.min_rms)
     elif args.command == "regenerate":
         regenerate(args.data_dir, args.model_dir)
     elif args.command == "predict":

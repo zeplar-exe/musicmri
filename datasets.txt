@@ -9,6 +9,7 @@ ds002724: A dataset recorded during development of an affective brain-computer m
     EEG only
     https://openneuro.org/datasets/ds002724/versions/1.0.1
     Fully synthetic
+    This dataset has been excluded because its corpus is mirrored in ds002725
 ds002725: A dataset recording joint EEG-fMRI during affective music listening
     https://openneuro.org/datasets/ds002725/versions/1.0.0
     Synthetic + classical pieces
@@ -34,6 +35,7 @@ NMED-E: Naturalistic Music EEG Dataset
 ds003720: Music Genre fMRI Dataset
     https://openneuro.org/datasets/ds003720/versions/1.0.1
     GTZAN dataset samples
+    Must only use stems due to genre homogeneity
 ds003774: MUSIN-G Genre EEG dataset
     https://openneuro.org/datasets/ds003774/versions/1.0.2
     https://www.sciencedirect.com/science/article/pii/S235234092200868X
@@ -42,5 +44,3 @@ ds003774: MUSIN-G Genre EEG dataset
     Excluded: Aurore - Claire David; not available for download
     Excluded: Fallin - Dr. SaxLove; not available for download
     Excluded: Master of Running - Rickeyabo; not available for download
-
-Note to self: ensure download of official music only, not music videos or different cuts to avoid desyncs and artifacts

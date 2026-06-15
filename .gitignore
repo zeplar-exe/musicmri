@@ -10,6 +10,8 @@ data-piano/
 data-vocals/
 exemplars/
 background/
+profiles/
+plots/
 *.json
 
 .DS_Store
