@@ -1,0 +1,16 @@
+Song No. 		Song Name-Artist			Genre			Duration(sec)		Tempo(BPM)		Duration from Song	
+1		Trip to the lonely planet- Mark Alow		Deep House		125			121.95
+2		Sail-Awolnation					Indie			114			119			0:00-1:54
+3		Concept 15- Kodomo				Electronics		132			161			0:00-2:12
+4		Aurore - Claire David				New Age			111			-			0:00-1:51
+5		Proof- Idiotape					Electronic Dance	124			123			0:00-2:04
+6		Glider- Tycho					Ambient			100			126			0:00-1:40
+7		Raag Bihag- B.Sivaramakrishna Rao		Hindustani Classical 	116			70			0:00-1:56
+8		Albela sajan - Ismail Darbar			Indian Semi-Classical	121			194			0:00-2:01
+9		Mor Bani Thanghat Kare - Sanjay Leela Bhansali 	Indian Folk		126			117			0:00-2:06
+10		Fallin - Dr. SaxLove 				Soft Jazz		129			197			0:00-2:09
+11		Master of Running - Rickeyabo			Goth Rock		113			120			0:00-1:53
+12		JB - Nobody.one 				Progressive
+								Instrumental Ro		117			146			0:00-1:57
+
+

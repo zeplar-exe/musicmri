@@ -1,18 +1,18 @@
 ds002721: An EEG dataset recorded during affective music listening
     https://openneuro.org/datasets/ds002721/versions/1.0.1
-    110 pieces
+    110 pieces from Eerola & Vuoskoski, “A comparison of the discrete and dimensional models of emotion in music”
 ds002722: A dataset recorded during development of an affective brain-computer music interface: calibration session
     EEG only
     https://openneuro.org/datasets/ds002722/versions/1.0.1
-    Fully synthetic
+    Fully synthetic; stimuli provided
 ds002724: A dataset recorded during development of an affective brain-computer music interface: training sessions
     EEG only
     https://openneuro.org/datasets/ds002724/versions/1.0.1
-    Fully synthetic
+    Fully synthetic; stimuli provided
     This dataset has been excluded because its corpus is mirrored in ds002725
 ds002725: A dataset recording joint EEG-fMRI during affective music listening
     https://openneuro.org/datasets/ds002725/versions/1.0.0
-    Synthetic + classical pieces
+    Synthetic + classical pieces; stimuli provided
 NMED-T: Naturalistic Music EEG Dataset (Tempo)
     https://exhibits.stanford.edu/data/catalog/jn859kj8079
     https://archives.ismir.net/ismir2017/paper/000198.pdf

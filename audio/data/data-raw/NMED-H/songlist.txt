@@ -1,0 +1,35 @@
+Title 
+Artist 
+iTunes album ID
+Start (samp)
+End (samp)
+Trimmed
+length (samp)
+
+“Ainvayi Ainvayi”
+Salim Merchant & Sunidhi Chauhan
+797516730
+23814 
+11761542 
+11737729
+
+“Daaru Desi” 
+Benny Dayal & Shalmali Kholgade
+537651546
+43394 
+11754291
+11710898
+
+“Haule Haule” 
+Sukhwinder Singh
+673596457
+3528
+11602710
+11599183
+
+“Malang” 
+Siddharth Mahadevan & Shilpa Rao
+775836478
+15579
+12004236
+11988658

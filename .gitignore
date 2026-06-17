@@ -1,12 +1,15 @@
 .vscode/
 models*/
-data/
 background/
 exemplars/
 profiles/
 plots/
 synth/
 *.json
+
+audio/data/**
+!audio/data/**/
+!audio/data/**/songlist.txt
 
 .DS_Store
 

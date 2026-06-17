@@ -1,0 +1,11 @@
+# Song Title Artist ASIN Tempo (BPM) Tempo (Hz) min:sec
+1 “First Fires” Bonobo B00CJE73J6 55.97 0.9328 4:38
+2 “Oino” LA Priest B00T4NHS2W 69.44 1.1574 4:31
+3 “Tiptoes” Daedelus B011SAZRLC 74.26 1.2376 4:36
+4 “Careless Love” Croquet Club B06X9736NJ 82.42 1.3736 4:54
+5 “Lebanese Blonde” Thievery Corporation B000SF16MI 91.46 1.5244 4:49
+6 “Canopee” Polo & Pan ´ B01GOL4IB0 96.15 1.6026 4:36
+7 “Doing Yoga” Kazy Lambist B01JDDVIQ4 108.70 1.8116 4:52
+8 “Until the Sun Needs to Rise” Ruf¨ us du Sol ¨ B01APT6JKA 120.00 2.0000 4:52
+9 “Silent Shout” The Knife B00IMN40O4 128.21 2.1368 4:54
+10 “The Last Thing You Should Do” David Bowie B018GS2A46 150.00 2.5000 4:58
