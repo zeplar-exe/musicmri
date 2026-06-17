@@ -10,6 +10,7 @@ synth/
 audio/data/**
 !audio/data/**/
 !audio/data/**/songlist.txt
+!audio/data/**/songlist.csv
 
 .DS_Store
 
