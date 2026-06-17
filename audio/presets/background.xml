@@ -1,0 +1,66 @@
+<?xml-model href="schema.xsd"?>
+<presets>
+    <preset name="Raw Background Train" prefix="background-train-raw">
+        <include>
+            <dataset stem="raw">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset name="Bass Background Train" prefix="background-train-bass">
+        <include>
+            <dataset stem="bass">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset name="Vocals Background Train" prefix="background-train-vocals">
+        <include>
+            <dataset stem="vocals">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset name="Drums Background Train" prefix="background-train-drums" enabled="true">
+        <include>
+            <dataset stem="drums">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset name="Other Background Train" prefix="background-train-other">
+        <include>
+            <dataset stem="other">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset name="Separate-Combined Background Train" prefix="background-train-combined">
+        <include>
+            <dataset stem="raw">background-train</dataset>
+            <dataset stem="bass">background-train</dataset>
+            <dataset stem="vocals">background-train</dataset>
+            <dataset stem="drums">background-train</dataset>
+            <dataset stem="other">background-train</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+</presets>

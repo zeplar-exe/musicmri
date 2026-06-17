@@ -1,0 +1,224 @@
+<?xml-model href="../schema.xsd"?>
+<presets>
+    <preset prefix="ds003720-raw">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+        </include>
+    </preset>
+    <preset prefix="ds003720-raw-chunk">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset prefix="ds003720-raw-band">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset prefix="ds003720-raw-chunk-band">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+
+    <preset prefix="ds003720-bass">
+        <include>
+            <dataset stem="bass">ds003720</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-bass-chunk">
+        <include>
+            <dataset stem="bass">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-bass-band">
+        <include>
+            <dataset stem="bass">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-bass-chunk-band">
+        <include>
+            <dataset stem="bass">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003720-drums">
+        <include>
+            <dataset stem="drums">ds003720</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-drums-chunk">
+        <include>
+            <dataset stem="drums">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-drums-band">
+        <include>
+            <dataset stem="drums">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-drums-chunk-band">
+        <include>
+            <dataset stem="drums">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003720-vocals">
+        <include>
+            <dataset stem="vocals">ds003720</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-vocals-chunk">
+        <include>
+            <dataset stem="vocals">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-vocals-band">
+        <include>
+            <dataset stem="vocals">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-vocals-chunk-band">
+        <include>
+            <dataset stem="vocals">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003720-other">
+        <include>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-other-chunk">
+        <include>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-other-band">
+        <include>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-other-chunk-band">
+        <include>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003720-combined">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+            <dataset stem="bass">ds003720</dataset>
+            <dataset stem="vocals">ds003720</dataset>
+            <dataset stem="drums">ds003720</dataset>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-combined-chunk">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+            <dataset stem="bass">ds003720</dataset>
+            <dataset stem="vocals">ds003720</dataset>
+            <dataset stem="drums">ds003720</dataset>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-combined-band">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+            <dataset stem="bass">ds003720</dataset>
+            <dataset stem="vocals">ds003720</dataset>
+            <dataset stem="drums">ds003720</dataset>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003720-combined-chunk-band">
+        <include>
+            <dataset stem="raw">ds003720</dataset>
+            <dataset stem="bass">ds003720</dataset>
+            <dataset stem="vocals">ds003720</dataset>
+            <dataset stem="drums">ds003720</dataset>
+            <dataset stem="other">ds003720</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+</presets>

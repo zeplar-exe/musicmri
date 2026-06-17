@@ -1,0 +1,36 @@
+<?xml-model href="schema.xsd"?>
+<presets>
+    <import href="sweep/ds002721.xml"/>
+    <import href="sweep/ds002722.xml"/>
+    <import href="sweep/ds002725.xml"/>
+    <import href="sweep/ds003720.xml"/>
+    <import href="sweep/ds003774.xml"/>
+    <import href="sweep/NMED-E.xml"/>
+    <import href="sweep/NMED-H.xml"/>
+    <import href="sweep/NMED-M.xml"/>
+    <import href="sweep/NMED-T.xml"/>
+</presets>
+
+
+<!-- This is a comment
+ raws, band-only and chunk-only are bad unless noted otherwise
+ 3720 is genre homogenous - must use stems
+ 3720 has no bass?
+ 2725 vocals chunk-only is OK
+ 2722 has no vocals, skip
+ 2722 has no bass, skip
+ 2722 has no drums, skip
+ 2722 other band is OK?
+ 2721 has no vocals, skip
+ 2721 drums band is OK
+ 2721 other band is OK
+ 2721 raw band is OK
+ 2725 is piano + animals, drop drums, bass, vocals
+ 3774 raw is suspect due to genre heterogeneity
+    otherwise, focus on stems
+ HONESTLY: before we do any shenanigans, just make a preset of 
+ EVERYTHING and then do a neural test on that; see what shows up
+ or if anything shows up at all
+ also: what about combinations? like, load all of the stems into one preset, and 
+ then do a test on that; see if it outperforms the raw or the individual stems
+-->

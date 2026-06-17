@@ -1,17 +1,11 @@
 .vscode/
-models/
+models*/
 data/
-data=raw/
-data-bass/
-data-drums/
-data-guitar/
-data-other/
-data-piano/
-data-vocals/
-exemplars/
 background/
+exemplars/
 profiles/
 plots/
+synth/
 *.json
 
 .DS_Store

@@ -1,0 +1,344 @@
+<?xml-model href="../schema.xsd"?>
+<presets>
+    <preset prefix="ds003774-raw-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+    </preset>
+    <preset prefix="ds003774-raw-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset prefix="ds003774-raw-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset prefix="ds003774-raw-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+
+    <preset prefix="ds003774-bass-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-bass-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-bass-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-bass-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003774-drums-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-drums-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-drums-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-drums-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003774-vocals-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-vocals-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-vocals-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-vocals-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003774-other-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-other-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-other-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-other-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="ds003774-combined-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+            <dataset stem="bass">ds003774</dataset>
+            <dataset stem="vocals">ds003774</dataset>
+            <dataset stem="drums">ds003774</dataset>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-combined-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+            <dataset stem="bass">ds003774</dataset>
+            <dataset stem="vocals">ds003774</dataset>
+            <dataset stem="drums">ds003774</dataset>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-combined-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+            <dataset stem="bass">ds003774</dataset>
+            <dataset stem="vocals">ds003774</dataset>
+            <dataset stem="drums">ds003774</dataset>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="ds003774-combined-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">ds003774</dataset>
+            <dataset stem="bass">ds003774</dataset>
+            <dataset stem="vocals">ds003774</dataset>
+            <dataset stem="drums">ds003774</dataset>
+            <dataset stem="other">ds003774</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+</presets>

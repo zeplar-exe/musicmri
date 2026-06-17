@@ -1,0 +1,125 @@
+<?xml-model href="schema.xsd"?>
+<presets>
+    <preset name="Synth Stimuli with 25 Min Samples (Chunk+Band)" prefix="synth-test1-ms25-cb">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>25</min_samples>
+            <min_cluster_size_min>20</min_cluster_size_min>
+            <min_cluster_size_max>60</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 25 Min Samples (Chunk-only)" prefix="synth-test1-ms25-c">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>25</min_samples>
+            <min_cluster_size_min>20</min_cluster_size_min>
+            <min_cluster_size_max>60</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 25 Min Samples (Band-only)" prefix="synth-test1-ms25-b">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>25</min_samples>
+            <min_cluster_size_min>20</min_cluster_size_min>
+            <min_cluster_size_max>60</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+    
+    <preset name="Synth Stimuli with 50 Min Samples (Chunk+Band)" prefix="synth-test1-ms50-cb" enabled="true">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>50</min_samples>
+            <min_cluster_size_min>40</min_cluster_size_min>
+            <min_cluster_size_max>100</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 50 Min Samples (Chunk-only)" prefix="synth-test1-ms50-c">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>50</min_samples>
+            <min_cluster_size_min>40</min_cluster_size_min>
+            <min_cluster_size_max>100</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 50 Min Samples (Band-only)" prefix="synth-test1-ms50-b">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>50</min_samples>
+            <min_cluster_size_min>40</min_cluster_size_min>
+            <min_cluster_size_max>100</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+
+    <preset name="Synth Stimuli with 100 Min Samples (Chunk+Band)" prefix="synth-test1-ms100-cb">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>100</min_samples>
+            <min_cluster_size_min>80</min_cluster_size_min>
+            <min_cluster_size_max>140</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 100 Min Samples (Chunk-only)" prefix="synth-test1-ms100-c">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>100</min_samples>
+            <min_cluster_size_min>80</min_cluster_size_min>
+            <min_cluster_size_max>140</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset name="Synth Stimuli with 100 Min Samples (Band-only)" prefix="synth-test1-ms100-b">
+        <include>
+            <dataset stem="raw">synth-test1</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>100</min_samples>
+            <min_cluster_size_min>80</min_cluster_size_min>
+            <min_cluster_size_max>140</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+</presets>

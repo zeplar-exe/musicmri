@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 import warnings
 from collections import defaultdict
 from glob import glob
@@ -37,11 +38,7 @@ def chunk_audio(audio):
     mel = librosa.feature.melspectrogram(y=audio, sr=SR, n_mels=N_MELS, hop_length=HOP_LENGTH)
     log_mel = librosa.power_to_db(mel, ref=np.max)
 
-    # Keep only whole 1s chunks; drop the trailing partial one. A sub-CHUNK_FRAMES
-    # tail is <1s (unusable in the neural analysis anyway) and, when padded out
-    # with silence, every file's tail looks alike -- they collapse into a spurious
-    # "fade-out" cluster. Dropping only the LAST chunk leaves every earlier chunk
-    # index (and thus its j * CHUNK_DURATION timestamp) untouched.
+    # Keep only whole 1s chunks; drop the trailing partial one to avoid sub-1 second chunks
     n_chunks = log_mel.shape[1] // CHUNK_FRAMES
     if n_chunks == 0:
         return np.empty((0, N_MELS * CHUNK_FRAMES))
@@ -139,20 +136,30 @@ def _write_summary(model_dir, score, labels, extra=[]):
 
 
 def _write_distributions(model_dir, files, labels):
-    """Per-file cluster breakdown (cluster_analysis.py layout), keyed by basename
-    -> model_dir/distributions.txt: how many chunks of each file fell in each
-    (non-noise) cluster."""
+    """Per-file and per-cluster breakdown."""
     per_file = defaultdict(lambda: defaultdict(int))
     for file, label in zip(files, labels):
         bn = os.path.basename(file)
-        per_file[bn]  # ensure all-noise files still appear (with no clusters)
         if int(label) != -1:
             per_file[bn][int(label)] += 1
+    
     with open(os.path.join(model_dir, "distributions.txt"), "w") as f:
         for name in sorted(per_file):
             f.write(f"File {name}:\n")
             for cluster, count in sorted(per_file[name].items()):
                 f.write(f"  Cluster {cluster}: {count} chunks\n")
+    
+    per_cluster = defaultdict(lambda: defaultdict(int))
+    for file, label in zip(files, labels):
+        bn = os.path.basename(file)
+        if int(label) != -1:
+            per_cluster[int(label)][bn] += 1
+    
+    with open(os.path.join(model_dir, "distributions-inverted.txt"), "w") as f:
+        for name in sorted(per_cluster):
+            f.write(f"Cluster {name}:\n")
+            for file, count in sorted(per_cluster[name].items()):
+                f.write(f"  File {file}: {count} chunks\n")
 
 
 def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
@@ -185,9 +192,7 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
         if len(chunked) == 0:
             continue
 
-        # Energy gate: drop near-silent chunks (max per-frame RMS below min_rms dBFS).
-        # j is the ORIGINAL chunk index so surviving chunks keep their true start
-        # time -- dropping a rest must not shift downstream timestamps.
+        # Energy gate, drop near-silent chunks
         for j, chunk in enumerate(chunked):
             seen_chunks += 1
             if min_rms is not None and rms_db[j] < min_rms:
@@ -203,12 +208,8 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
         gate_note = f"Gate dropped {dropped}/{seen_chunks} chunks < {min_rms:g} dBFS"
         print(f"Energy gate: {gate_note}")
 
-    # Too few chunks to cluster: you can't form a cluster of size mcs_max, and
-    # HDBSCAN's prediction KD-tree query needs >= min_samples points. A handful
-    # of survivors past a gate means the stem is essentially silent (e.g. an
-    # absent instrument's demucs residual) -- skip it cleanly instead of letting
-    # PCA/UMAP/HDBSCAN crash on a degenerate input.
     min_needed = max(mcs_max, min_samples or 0)
+    
     if len(samples) < min_needed:
         reason = f"only {len(samples)}/{seen_chunks} chunks survived"
         if min_rms is not None:
@@ -236,12 +237,10 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
     best_score = -1
     best_labels = None
     best_model = None
+    size = 0
 
     for size in range(mcs_min, mcs_max + 1, mcs_step):
-        # min_samples=None lets HDBSCAN default it to min_cluster_size (its native
-        # behavior). Set it to decouple the noise/conservatism dial from cluster size.
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=size, min_samples=min_samples,
-                                    prediction_data=True)
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=size, min_samples=min_samples, prediction_data=True)
         labels = clusterer.fit_predict(embedding)
 
         mask = labels != -1
@@ -263,11 +262,14 @@ def train(data_dir, model_dir, limit=None, per_chunk=False, per_band=False,
     joblib.dump(pca, os.path.join(model_dir, "pca.joblib"))
     joblib.dump(best_model, os.path.join(model_dir, "hdbscan_model.joblib"))
     joblib.dump(norm, os.path.join(model_dir, "normalizer.joblib"))
+    np.savez_compressed(os.path.join(model_dir, "embedding.npz"), embedding=embedding.astype(np.float32), labels=np.asarray(best_labels, dtype=np.int32))
+    
+    samples_note = f"Total samples: {len(samples)} ({CHUNK_SIZE:.2f}s chunks)"
+    size_note = f"Best min_cluster_size: {size} (silhouette score {best_score:.4f})"
 
     _dump_clusters(model_dir, sample_map, time_map, best_labels, best_model.probabilities_)
-    _write_summary(model_dir, best_score, best_labels, extra=[gate_note])
+    _write_summary(model_dir, best_score, best_labels, extra=[gate_note, samples_note, size_note])
     _write_distributions(model_dir, sample_map, best_labels)
-
 
 
 def _load_models(model_dir):
@@ -300,13 +302,15 @@ def _dump_clusters(model_dir, files, starts, labels, strengths):
     for file, start, label, strength in zip(files, starts, labels, strengths):
         clusters[int(label)].append({
             "file": file,
-            "start": start,
-            "end": start + CHUNK_DURATION,
-            "strength": float(strength),
+            "start": round(float(start), 4),
+            "end": round(float(start + CHUNK_DURATION), 4),
+            "strength": round(float(strength), 4),
         })
 
+    ordered = {str(label): sorted(recs, key=lambda r: r["strength"], reverse=True) for label, recs in sorted(clusters.items())}
+
     with open(os.path.join(model_dir, "clusters.json"), "w") as f:
-        json.dump(clusters, f, indent=2)
+        json.dump(ordered, f, indent=2)
 
 
 def regenerate(data_dir, model_dir):
@@ -372,16 +376,31 @@ def predict(mus_file, model_dir, start_time=0.0, end_time=None, soft=False, top_
 
 
 def _write_exemplar(records, cluster_id, n, out_dir):
-    """Concatenate the n highest-strength chunks of one cluster into a wav."""
+    """Concatenate a cluster's exemplar (top 5 + random 5 interleaved) chunks into one wav."""
     if not records:
         print(f"No chunks were assigned to cluster {cluster_id}.")
         return
 
-    top = sorted(records, key=lambda r: r["strength"], reverse=True)[:n]
-    gap = np.zeros(int(0.25 * SR), dtype=np.float32)
+    half = n // 2
+    ordered = sorted(records, key=lambda r: r["strength"], reverse=True)
+    top = ordered[:half]
 
+    rest = ordered[half:]
+    rng = np.random.default_rng(SEED)
+    n_rand = min(half, len(rest))
+    rand = [rest[i] for i in rng.choice(len(rest), size=n_rand, replace=False)] if rest else []
+
+    # interleave top/random, falling back to whichever list still has entries
+    picks = []
+    for i in range(max(len(top), len(rand))):
+        if i < len(top):
+            picks.append(top[i])
+        if i < len(rand):
+            picks.append(rand[i])
+
+    gap = np.zeros(int(0.25 * SR), dtype=np.float32)
     clips = []
-    for r in top:
+    for r in picks:
         seg, _ = librosa.load(r["file"], sr=SR, offset=r["start"], duration=CHUNK_DURATION)
         if len(seg) > 0:
             clips.append(seg)
@@ -397,7 +416,7 @@ def _write_exemplar(records, cluster_id, n, out_dir):
     out_path = os.path.join(out_dir, f"cluster_{cluster_id}.wav")
     sf.write(out_path, out, SR)
 
-    print(f"Wrote top {len(top)} of {len(records)} exemplars -> {out_path}")
+    print(f"Wrote {len(top)} top + {len(rand)} random of {len(records)} exemplars -> {out_path}")
 
 
 def exemplars(cluster_id, model_dir, n=10, out_dir="exemplars"):
@@ -492,8 +511,86 @@ def name_clusters(labels, means):
     return {lab: cluster_name(means[lab]) for lab in labels}
 
 
-def profile(model_dir):
-    """Average acoustic descriptors within each cluster"""
+def _plot_heatmap(labels, means, counts, out_dir):
+    """Clusters x 5 descriptors, z-scored so colors are comparable."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    names = DESCRIPTOR_NAMES
+    cluster_name = name_clusters(labels, means)
+    rows = [lab for lab in labels if lab != -1] or labels
+
+    M = np.array([[means[lab][nm] for nm in names] for lab in rows], dtype=float)
+    mu = M.mean(axis=0, keepdims=True)
+    sd = M.std(axis=0, keepdims=True) + 1e-8
+    Z = (M - mu) / sd
+
+    fig_h = max(3.0, 0.28 * len(rows))
+    fig, ax = plt.subplots(figsize=(7, fig_h))
+    im = ax.imshow(Z, aspect="auto", cmap="coolwarm", vmin=-2.5, vmax=2.5)
+
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(names, rotation=30, ha="right")
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([f"{lab} {cluster_name[lab]} (n={counts[lab]})" for lab in rows], fontsize=6)
+    ax.set_title("Cluster acoustic profiles (z-scored per feature)")
+    fig.colorbar(im, ax=ax, label="std devs from mean")
+    fig.tight_layout()
+
+    path = os.path.join(out_dir, "cluster_heatmap.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"Wrote {path}", file=sys.stderr)
+
+
+def _plot_scatter(model_dir, out_dir, max_chunks=20000):
+    """2D scatter of 50-D -> PCA 2-D embedding, colored by cluster."""
+    emb_path = os.path.join(model_dir, "embedding.npz")
+    if not os.path.exists(emb_path):
+        print("No embedding.npz (retrain to enable the scatter); skipping.", file=sys.stderr)
+        return
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    data = np.load(emb_path)
+    emb, labels = data["embedding"], data["labels"]
+
+    if len(emb) > max_chunks:
+        idx = np.random.default_rng(SEED).choice(len(emb), max_chunks, replace=False)
+        emb, labels = emb[idx], labels[idx]
+
+    xy = PCA(n_components=2, random_state=SEED).fit_transform(emb)
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+
+    noise = labels == -1
+    if noise.any():
+        ax.scatter(xy[noise, 0], xy[noise, 1], s=3, c="lightgray", alpha=0.4, label="noise (-1)")
+
+    real = sorted(set(labels[~noise].tolist()))
+    cmap = plt.get_cmap("tab20")
+    for i, lab in enumerate(real):
+        m = labels == lab
+        ax.scatter(xy[m, 0], xy[m, 1], s=4, color=cmap(i % 20), alpha=0.6)
+        cx, cy = xy[m, 0].mean(), xy[m, 1].mean()
+        ax.text(cx, cy, str(lab), fontsize=7, weight="bold", ha="center", va="center")
+
+    ax.set_title(f"Embedding (PCA of 50-D UMAP) - {len(real)} clusters")
+    ax.set_xlabel("PC1")
+    ax.set_ylabel("PC2")
+    fig.tight_layout()
+
+    path = os.path.join(out_dir, "cluster_scatter.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"Wrote {path}", file=sys.stderr)
+
+
+def profile(model_dir, out_dir=None):
+    """Average acoustic descriptors within each cluster. Draws heatmap + scatter PNGs."""
     labels, means, counts = cluster_means(model_dir)
     names = DESCRIPTOR_NAMES
     cluster_name = name_clusters(labels, means)
@@ -507,6 +604,11 @@ def profile(model_dir):
         c = counts[lab]
         row = " ".join(f"{means[lab][nm]:>11.2f}" for nm in names)
         print(f"{lab:>8} {c:>7} {row}  {cluster_name[lab]:>12}")
+
+    if out_dir is not None:
+        os.makedirs(out_dir, exist_ok=True)
+        _plot_heatmap(labels, means, counts, out_dir)
+        _plot_scatter(model_dir, out_dir)
 
 
 if __name__ == "__main__":
@@ -559,6 +661,8 @@ if __name__ == "__main__":
 
     p_prof = sub.add_parser("profile", help="Mean of named acoustic descriptors per cluster.")
     p_prof.add_argument("--model", dest="model_dir", required=True)
+    p_prof.add_argument("--out-dir", dest="out_dir", default=None,
+                        help="If set, also write cluster_heatmap.png + cluster_scatter.png here.")
 
     args = parser.parse_args()
 
@@ -572,4 +676,4 @@ if __name__ == "__main__":
     elif args.command == "exemplars":
         exemplars(args.cluster, args.model_dir, args.n, args.out_dir)
     elif args.command == "profile":
-        profile(args.model_dir)
+        profile(args.model_dir, args.out_dir)

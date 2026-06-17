@@ -70,6 +70,7 @@ def analyze_3774():
                     # and just: compare average to extracluster average
                 # might want to preload all of the stimuli
             
+            # should figure out which eeg nodes are auditory/relevant; time to read
             # condition 1: samples must be generally similar
             # condition 2: samples must be different from the rest of the set
             # get the variance of the averages... if small enough, C1 met

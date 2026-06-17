@@ -1,0 +1,224 @@
+<?xml-model href="../schema.xsd"?>
+<presets>
+    <preset prefix="NMED-H-raw">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+        </include>
+    </preset>
+    <preset prefix="NMED-H-raw-chunk">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset prefix="NMED-H-raw-band">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset prefix="NMED-H-raw-chunk-band">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+
+    <preset prefix="NMED-H-bass">
+        <include>
+            <dataset stem="bass">NMED-H</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-bass-chunk">
+        <include>
+            <dataset stem="bass">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-bass-band">
+        <include>
+            <dataset stem="bass">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-bass-chunk-band">
+        <include>
+            <dataset stem="bass">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-H-drums">
+        <include>
+            <dataset stem="drums">NMED-H</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-drums-chunk">
+        <include>
+            <dataset stem="drums">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-drums-band">
+        <include>
+            <dataset stem="drums">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-drums-chunk-band">
+        <include>
+            <dataset stem="drums">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-H-vocals">
+        <include>
+            <dataset stem="vocals">NMED-H</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-vocals-chunk">
+        <include>
+            <dataset stem="vocals">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-vocals-band">
+        <include>
+            <dataset stem="vocals">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-vocals-chunk-band">
+        <include>
+            <dataset stem="vocals">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-H-other">
+        <include>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-other-chunk">
+        <include>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-other-band">
+        <include>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-other-chunk-band">
+        <include>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-H-combined">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+            <dataset stem="bass">NMED-H</dataset>
+            <dataset stem="vocals">NMED-H</dataset>
+            <dataset stem="drums">NMED-H</dataset>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-combined-chunk">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+            <dataset stem="bass">NMED-H</dataset>
+            <dataset stem="vocals">NMED-H</dataset>
+            <dataset stem="drums">NMED-H</dataset>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-combined-band">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+            <dataset stem="bass">NMED-H</dataset>
+            <dataset stem="vocals">NMED-H</dataset>
+            <dataset stem="drums">NMED-H</dataset>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-H-combined-chunk-band">
+        <include>
+            <dataset stem="raw">NMED-H</dataset>
+            <dataset stem="bass">NMED-H</dataset>
+            <dataset stem="vocals">NMED-H</dataset>
+            <dataset stem="drums">NMED-H</dataset>
+            <dataset stem="other">NMED-H</dataset>
+        </include>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+</presets>

@@ -1,0 +1,15 @@
+<?xml-model href="schema.xsd"?>
+<presets>
+    <preset name="Example Preset" prefix="ds002721-raw" disabled="true">
+        <include>
+            <dataset stem="raw">ds002721</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>10</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>50</min_cluster_size_max>
+            <min_cluster_size_step>5</min_cluster_size_step>
+        </hdbscan>
+        <min_rms>-50</min_rms>
+    </preset>
+</presets>

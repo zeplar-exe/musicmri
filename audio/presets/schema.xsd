@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="stem">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="raw"/>
+      <xs:enumeration value="bass"/>
+      <xs:enumeration value="drums"/>
+      <xs:enumeration value="other"/>
+      <xs:enumeration value="vocals"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="normMethod">
+    <xs:restriction base="xs:token">
+      <xs:enumeration value="chunk"/> <!-- per-chunk loudness normalization -->
+      <xs:enumeration value="band"/> <!-- per-band z-score normalization -->
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="dataset">
+    <xs:simpleContent>
+      <xs:extension base="xs:token">
+        <xs:attribute name="stem" type="stem" default="raw"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="include">
+    <xs:sequence>
+      <xs:element name="dataset" type="dataset" maxOccurs="unbounded"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="hdbscan">
+    <xs:all>
+      <xs:element name="min_samples" type="xs:positiveInteger" minOccurs="0"/>
+      <xs:element name="min_cluster_size_min" type="xs:positiveInteger" minOccurs="0"/>
+      <xs:element name="min_cluster_size_max" type="xs:positiveInteger" minOccurs="0"/>
+      <xs:element name="min_cluster_size_step" type="xs:positiveInteger" minOccurs="0"/>
+    </xs:all>
+  </xs:complexType>
+
+  <xs:complexType name="normalize">
+    <xs:sequence>
+      <xs:element name="method" type="normMethod" minOccurs="0" maxOccurs="2"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="preset">
+    <xs:all>
+      <xs:element name="include" type="include"/>
+      <xs:element name="hdbscan" type="hdbscan" minOccurs="0"/>
+      <xs:element name="normalize" type="normalize" minOccurs="0"/>
+      <xs:element name="min_rms" type="xs:decimal" minOccurs="0"/>
+    </xs:all>
+    <xs:attribute name="prefix" type="xs:token"/>
+    <xs:attribute name="name" type="xs:token"/>
+    <xs:attribute name="enabled" type="xs:boolean" default="false"/>
+    <xs:attribute name="disabled" type="xs:boolean" default="false"/>
+  </xs:complexType>
+
+  <xs:element name="presets">
+    <xs:complexType>
+      <xs:choice minOccurs="0" maxOccurs="unbounded">
+        <xs:element name="preset" type="preset"/>
+        <xs:element name="import">
+          <xs:complexType>
+            <xs:attribute name="href" type="xs:anyURI" use="required"/>
+          </xs:complexType>
+        </xs:element>
+      </xs:choice>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

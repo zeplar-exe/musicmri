@@ -9,11 +9,7 @@ from demucs.audio import AudioFile, save_audio
 from demucs.pretrained import get_model
 from tqdm import tqdm
 
-# demucs.save_audio -> torchaudio.save passes params (bits_per_sample, encoding, ...)
-# that TorchCodec's AudioEncoder ignores; the write still succeeds. Silence the
-# whole benign family.
-warnings.filterwarnings("ignore",
-                        message=r"The '.*' parameter is not .* supported by TorchCodec AudioEncoder")
+warnings.filterwarnings("ignore", message=r"The '.*' parameter is not .* supported by TorchCodec AudioEncoder")
 
 
 def is_junk(path):
@@ -31,6 +27,23 @@ def main(data_dir, model_name="htdemucs", device=None):
     model.eval()
 
     base = data_dir.rstrip("/")
+    parent, leaf = os.path.split(base)
+
+    # Each stem goes in a SIBLING data-<stem>/ tree (e.g. data-bass/), NOT a
+    # data-raw-<stem>/ tree. The raw mixes live under data-raw/, so we strip the
+    # "raw" tag out of the leaf dir name and swap in the stem -- that lands the
+    # outputs on the data-<stem>/<dataset>/ paths the rest of the pipeline
+    # (pipeline.py, run_presets.py, sweep.sh) expects.
+    def stem_root(name):
+        # data-raw -> data-<stem> (strip the "raw" tag). If the leaf has no "raw"
+        # to swap (e.g. a bare "test/" dir), fall back to <leaf>-<stem> so the
+        # stems never collide with the input dir (which would otherwise make every
+        # stem resolve to the same path and the skip-if-exists check eat them all).
+        swapped = leaf.replace("raw", name)
+        if swapped == leaf:
+            swapped = f"{leaf}-{name}"
+        return os.path.join(parent, swapped)
+
     wav_files = sorted(f for f in glob(os.path.join(base, "**/*.wav"), recursive=True) if not is_junk(f))
     mp3_files = sorted(f for f in glob(os.path.join(base, "**/*.mp3"), recursive=True) if not is_junk(f))
     flac_files = sorted(f for f in glob(os.path.join(base, "**/*.flac"), recursive=True) if not is_junk(f))
@@ -39,9 +52,15 @@ def main(data_dir, model_name="htdemucs", device=None):
     print(f"Separating {len(files)} files with '{model_name}' on {device} "
           f"-> stems {model.sources}")
 
+    skipped = 0
     for path in tqdm(files, desc="Separating stems"):
-        wav = AudioFile(path).read(streams=0, samplerate=model.samplerate,
-                                   channels=model.audio_channels)
+        rel = os.path.relpath(path, base)  # same path layout inside each data-{stem}/
+        out_paths = [os.path.join(stem_root(name), rel) for name in model.sources]
+        if all(os.path.exists(p) for p in out_paths):
+            skipped += 1
+            continue
+
+        wav = AudioFile(path).read(streams=0, samplerate=model.samplerate, channels=model.audio_channels)
         # Demucs expects per-track normalized input, then rescales the outputs back.
         ref = wav.mean(0)
         wav = (wav - ref.mean()) / (ref.std() + 1e-8)
@@ -50,11 +69,12 @@ def main(data_dir, model_name="htdemucs", device=None):
             sources = apply_model(model, wav[None], device=device, progress=False)[0]
         sources = sources * ref.std() + ref.mean()
 
-        rel = os.path.relpath(path, base)  # same path layout inside each data-{stem}/
-        for name, source in zip(model.sources, sources):
-            out_path = os.path.join(f"{base}-{name}", rel)
+        for out_path, source in zip(out_paths, sources):
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             save_audio(source.cpu(), out_path, samplerate=model.samplerate)
+
+    if skipped:
+        print(f"Skipped {skipped}/{len(files)} files that already had all stems.")
 
 
 if __name__ == "__main__":

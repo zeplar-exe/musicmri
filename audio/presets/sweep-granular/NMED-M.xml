@@ -1,0 +1,344 @@
+<?xml-model href="../schema.xsd"?>
+<presets>
+    <preset prefix="NMED-M-raw-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+    </preset>
+    <preset prefix="NMED-M-raw-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+    </preset>
+    <preset prefix="NMED-M-raw-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+    </preset>
+    <preset prefix="NMED-M-raw-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+    </preset>
+
+    <preset prefix="NMED-M-bass-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-bass-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-bass-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-bass-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="bass">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-M-drums-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-drums-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-drums-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-drums-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="drums">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-M-vocals-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-vocals-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-vocals-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-vocals-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="vocals">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-M-other-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-other-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-other-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-other-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+
+    <preset prefix="NMED-M-combined-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+            <dataset stem="bass">NMED-M</dataset>
+            <dataset stem="vocals">NMED-M</dataset>
+            <dataset stem="drums">NMED-M</dataset>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-combined-chunk-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+            <dataset stem="bass">NMED-M</dataset>
+            <dataset stem="vocals">NMED-M</dataset>
+            <dataset stem="drums">NMED-M</dataset>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-combined-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+            <dataset stem="bass">NMED-M</dataset>
+            <dataset stem="vocals">NMED-M</dataset>
+            <dataset stem="drums">NMED-M</dataset>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+    <preset prefix="NMED-M-combined-chunk-band-granular-mcs5-ms20">
+        <include>
+            <dataset stem="raw">NMED-M</dataset>
+            <dataset stem="bass">NMED-M</dataset>
+            <dataset stem="vocals">NMED-M</dataset>
+            <dataset stem="drums">NMED-M</dataset>
+            <dataset stem="other">NMED-M</dataset>
+        </include>
+        <hdbscan>
+            <min_samples>5</min_samples>
+            <min_cluster_size_min>5</min_cluster_size_min>
+            <min_cluster_size_max>20</min_cluster_size_max>
+        </hdbscan>
+        <normalize>
+            <method>chunk</method>
+            <method>band</method>
+        </normalize>
+        <min_rms>-40</min_rms>
+    </preset>
+</presets>
