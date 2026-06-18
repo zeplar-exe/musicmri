@@ -74,7 +74,7 @@
         </normalize>
         <min_rms>-40</min_rms>
     </preset>
-    <preset name="Separate-Combined Background Train (Granular)" prefix="background-train-combined-granular">
+    <preset name="Separate-Combined Background Train (Granular)" prefix="background-train-combined-granular" enabled="true">
         <include>
             <dataset stem="raw">background-train</dataset>
             <dataset stem="bass">background-train</dataset>

@@ -49,7 +49,7 @@
         </normalize>
         <min_rms>-40</min_rms>
     </preset>
-    <preset name="Separate-Combined Background Train" prefix="background-train-combined">
+    <preset name="Separate-Combined Background Train" prefix="background-train-combined" enabled="true">
         <include>
             <dataset stem="raw">background-train</dataset>
             <dataset stem="bass">background-train</dataset>

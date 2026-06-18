@@ -32,8 +32,7 @@ def main(data_dir, model_name="htdemucs", device=None):
     # Each stem goes in a SIBLING data-<stem>/ tree (e.g. data-bass/), NOT a
     # data-raw-<stem>/ tree. The raw mixes live under data-raw/, so we strip the
     # "raw" tag out of the leaf dir name and swap in the stem -- that lands the
-    # outputs on the data-<stem>/<dataset>/ paths the rest of the pipeline
-    # (pipeline.py, run_presets.py, sweep.sh) expects.
+    # outputs on the data-<stem>/<dataset>/ paths the rest of the pipeline expects.
     def stem_root(name):
         # data-raw -> data-<stem> (strip the "raw" tag). If the leaf has no "raw"
         # to swap (e.g. a bare "test/" dir), fall back to <leaf>-<stem> so the

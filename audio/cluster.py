@@ -73,6 +73,38 @@ def _chunks_with_rms(path):
     return chunk_audio(audio), chunk_rms_db(audio)
 
 
+def chunk_onset_offsets(audio, rel_db=-30.0):
+    """Per-chunk leading-silence duration in seconds, aligned to chunk_audio's
+    grid (index j matches one-to-one, like chunk_rms_db).
+
+    Within each 1s chunk, find the first frame whose RMS rises above the chunk's
+    OWN peak by rel_db (default -30 dB ~= 3% of peak), and return its time. A
+    chunk that already starts in sound returns 0.0 (frame 0 is above threshold).
+    This lets a downstream consumer push a silence->onset chunk's anchor to where
+    the sound actually starts, so an EEG window isn't half pre-onset silence."""
+    rms = librosa.feature.rms(y=audio, hop_length=HOP_LENGTH)[0]  # per-frame, linear
+    n_chunks = len(rms) // CHUNK_FRAMES  # whole chunks only, matching chunk_audio
+    thresh_ratio = 10.0 ** (rel_db / 20.0)
+    out = []
+    for k in range(n_chunks):
+        seg = rms[k * CHUNK_FRAMES:(k + 1) * CHUNK_FRAMES]
+        peak = float(seg.max())
+        if peak <= 0.0:
+            out.append(0.0)
+            continue
+        above = np.nonzero(seg >= peak * thresh_ratio)[0]
+        first = int(above[0]) if len(above) else 0
+        out.append(float(librosa.frames_to_time(first, sr=SR, hop_length=HOP_LENGTH)))
+    return np.array(out)
+
+
+def _chunks_with_onsets(path):
+    """chunk_audio + chunk_onset_offsets from a single load (analysis-side onset
+    re-anchoring, so leading silence doesn't sit inside the tracked EEG window)."""
+    audio, _ = librosa.load(path, sr=SR)
+    return chunk_audio(audio), chunk_onset_offsets(audio)
+
+
 def _fit_norm(X, per_chunk, per_band):
     """Derive normalization params from the training samples (X: n x N_MELS*CHUNK_FRAMES)."""
     norm = {"per_chunk": per_chunk, "per_band": per_band, "band_mean": None, "band_std": None}
@@ -322,8 +354,8 @@ def regenerate(data_dir, model_dir):
     flac_files = sorted(f for f in glob(os.path.join(data_dir, "**/*.flac"), recursive=True) if not is_junk(f))
     files = wav_files + mp3_files + flac_files
 
-    sample_map, time_map, all_labels, all_strengths = [], [], [], []
-    for file in tqdm(files, desc="Predicting chunks"):
+    sample_map, time_map, chunk_blocks = [], [], []
+    for file in tqdm(files, desc="Loading chunks"):
         try:
             log_mels = load_and_chunk(file)
         except Exception as e:
@@ -333,11 +365,19 @@ def regenerate(data_dir, model_dir):
         if len(log_mels) == 0:
             continue
 
-        labels, strengths = _predict_chunks(log_mels, encoder, pca, clusterer, norm)
-        sample_map.extend([file] * len(labels))
-        time_map.extend([j * CHUNK_DURATION for j in range(len(labels))])
-        all_labels.extend(labels)
-        all_strengths.extend(strengths)
+        chunk_blocks.append(log_mels)
+        sample_map.extend([file] * len(log_mels))
+        time_map.extend([j * CHUNK_DURATION for j in range(len(log_mels))])
+
+    if not chunk_blocks:
+        print("No audio to cluster.")
+        return
+
+    # One batched predict over every chunk, not one call per file. Each file has a
+    # different chunk count, so per-file calls hand the encoder a new batch shape
+    # every time -> tf.function retracing. Stacking first = a single trace.
+    all_log_mels = np.vstack(chunk_blocks)
+    all_labels, all_strengths = _predict_chunks(all_log_mels, encoder, pca, clusterer, norm)
 
     _dump_clusters(model_dir, sample_map, time_map, all_labels, all_strengths)
     print(f"Wrote clusters.json with {len(all_labels)} chunks.")
@@ -361,16 +401,19 @@ def predict(mus_file, model_dir, start_time=0.0, end_time=None, soft=False, top_
             order = np.argsort(row)[::-1][:top_k]
             top = "  ".join(f"c{j}:{row[j]:.2f}" for j in order)
             results.append((ts, row))
-            print(f"{ts:.2f}-{ts + CHUNK_DURATION:.2f}s -> {top}")
+            if __name__ == "__main__":
+                print(f"{ts:.2f}-{ts + CHUNK_DURATION:.2f}s -> {top}")
         return results
 
     labels, strengths = _predict_chunks(samples, encoder, pca, clusterer, norm)
 
     results = []
+    
     for i, label in enumerate(labels):
         ts = start_time + i * CHUNK_DURATION
         results.append((ts, int(label)))
-        print(f"{ts:.2f}-{ts + CHUNK_DURATION:.2f}s -> cluster {label} (strength {strengths[i]:.2f})")
+        if __name__ == "__main__":
+            print(f"{ts:.2f}-{ts + CHUNK_DURATION:.2f}s -> cluster {label} (strength {strengths[i]:.2f})")
 
     return results
 
